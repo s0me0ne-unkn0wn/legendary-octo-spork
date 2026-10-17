@@ -37,22 +37,25 @@ fn process(input: &str) -> Output {
         .expect("failed to execute CLI")
 }
 
-fn balances(input: &str, account_rows: &str, error_count: usize) {
+fn balances(input: &str, expected_accounts: &str, error_count: usize) {
     let output = process(input);
     let diagnostics = String::from_utf8(output.stderr).expect("invalid diagnostic encoding");
     assert!(output.status.success(), "{diagnostics}");
-    assert_accounts(
-        &output.stdout,
-        format!("client,available,held,total,locked\n{account_rows}").as_bytes(),
-    );
+    assert_accounts(&output.stdout, expected_accounts.as_bytes());
     assert_eq!(diagnostics.lines().count(), error_count, "{diagnostics}");
 }
 
 #[test]
 fn deposits_and_withdrawals_update_each_client() {
     balances(
-        "type,client,tx,amount\ndeposit,2,1,2\ndeposit,1,2,1.0001\nwithdrawal,1,3,0.5\ndeposit,1,4,0.0001\n",
-        "1,0.5002,0.0000,0.5002,false\n2,2.0000,0.0000,2.0000,false\n",
+        "type      , client, tx, amount
+         deposit   , 2     , 1 , 2
+         deposit   , 1     , 2 , 1.0001
+         withdrawal, 1     , 3 , 0.5
+         deposit   , 1     , 4 , 0.0001\n",
+        "client, available, held  , total , locked
+         1     , 0.5002   , 0.0000, 0.5002, false
+         2     , 2.0000   , 0.0000, 2.0000, false\n",
         0,
     );
 }
@@ -60,8 +63,14 @@ fn deposits_and_withdrawals_update_each_client() {
 #[test]
 fn withdrawals_cannot_use_money_on_hold() {
     balances(
-        "type,client,tx,amount\ndeposit,1,1,2\ndeposit,1,2,1\ndispute,1,1,\nwithdrawal,1,3,1.0001\nwithdrawal,1,4,1\n",
-        "1,0.0000,2.0000,2.0000,false\n",
+        "type      , client, tx, amount
+         deposit   , 1     , 1 , 2
+         deposit   , 1     , 2 , 1
+         dispute   , 1     , 1 ,
+         withdrawal, 1     , 3 , 1.0001
+         withdrawal, 1     , 4 , 1\n",
+        "client, available, held  , total , locked
+         1     , 0.0000   , 2.0000, 2.0000, false\n",
         1,
     );
 }
@@ -69,8 +78,13 @@ fn withdrawals_cannot_use_money_on_hold() {
 #[test]
 fn resolve_allows_a_later_dispute() {
     balances(
-        "type,client,tx,amount\ndeposit,1,1,2.125\ndispute,1,1\nresolve,1,1\ndispute,1,1\n",
-        "1,0.0000,2.1250,2.1250,false\n",
+        "type   , client, tx, amount
+         deposit, 1     , 1 , 2.125
+         dispute, 1     , 1
+         resolve, 1     , 1
+         dispute, 1     , 1\n",
+        "client, available, held  , total , locked
+         1     , 0.0000   , 2.1250, 2.1250, false\n",
         0,
     );
 }
@@ -78,8 +92,12 @@ fn resolve_allows_a_later_dispute() {
 #[test]
 fn disputes_can_make_available_balances_negative() {
     balances(
-        "type,client,tx,amount\ndeposit,1,1,1\nwithdrawal,1,2,0.9999\ndispute,1,1\n",
-        "1,-0.9999,1.0000,0.0001,false\n",
+        "type      , client, tx, amount
+         deposit   , 1     , 1 , 1
+         withdrawal, 1     , 2 , 0.9999
+         dispute   , 1     , 1\n",
+        "client, available, held  , total , locked
+         1     , -0.9999  , 1.0000, 0.0001, false\n",
         0,
     );
 }
@@ -87,8 +105,20 @@ fn disputes_can_make_available_balances_negative() {
 #[test]
 fn chargeback_can_make_total_negative_and_stops_account_activity() {
     balances(
-        "type,client,tx,amount\ndeposit,1,1,1\nwithdrawal,1,2,1\ndispute,1,1,\nchargeback,1,1,\ndeposit,1,3,5\nwithdrawal,1,4,0\nresolve,1,1,\ndispute,1,1,\nchargeback,1,1,\ndeposit,2,5,3\n",
-        "1,-1.0000,0.0000,-1.0000,true\n2,3.0000,0.0000,3.0000,false\n",
+        "type      , client, tx, amount
+         deposit   , 1     , 1 , 1
+         withdrawal, 1     , 2 , 1
+         dispute   , 1     , 1 ,
+         chargeback, 1     , 1 ,
+         deposit   , 1     , 3 , 5
+         withdrawal, 1     , 4 , 0
+         resolve   , 1     , 1 ,
+         dispute   , 1     , 1 ,
+         chargeback, 1     , 1 ,
+         deposit   , 2     , 5 , 3\n",
+        "client, available, held  , total  , locked
+         1     , -1.0000  , 0.0000, -1.0000, true
+         2     , 3.0000   , 0.0000, 3.0000 , false\n",
         5,
     );
 }
@@ -96,8 +126,23 @@ fn chargeback_can_make_total_negative_and_stops_account_activity() {
 #[test]
 fn invalid_state_changes_do_not_change_balances() {
     balances(
-        "type,client,tx,amount\ndispute,1,99,\nresolve,1,99,\nchargeback,1,99,\ndeposit,1,1,3\nwithdrawal,1,2,1\ndispute,1,2,\nresolve,1,2,\nchargeback,1,2,\nresolve,1,1,\nchargeback,1,1,\ndispute,1,1,\ndispute,1,1,\nresolve,1,1,\nresolve,1,1,\n",
-        "1,2.0000,0.0000,2.0000,false\n",
+        "type      , client, tx, amount
+         dispute   , 1     , 99,
+         resolve   , 1     , 99,
+         chargeback, 1     , 99,
+         deposit   , 1     , 1 , 3
+         withdrawal, 1     , 2 , 1
+         dispute   , 1     , 2 ,
+         resolve   , 1     , 2 ,
+         chargeback, 1     , 2 ,
+         resolve   , 1     , 1 ,
+         chargeback, 1     , 1 ,
+         dispute   , 1     , 1 ,
+         dispute   , 1     , 1 ,
+         resolve   , 1     , 1 ,
+         resolve   , 1     , 1 ,\n",
+        "client, available, held  , total , locked
+         1     , 2.0000   , 0.0000, 2.0000, false\n",
         10,
     );
 }
@@ -105,8 +150,16 @@ fn invalid_state_changes_do_not_change_balances() {
 #[test]
 fn other_clients_cannot_change_a_deposit() {
     balances(
-        "type,client,tx,amount\ndeposit,1,1,2\ndeposit,2,2,3\ndispute,2,1,\ndispute,1,1,\nresolve,2,1,\nchargeback,2,1,\n",
-        "1,0.0000,2.0000,2.0000,false\n2,3.0000,0.0000,3.0000,false\n",
+        "type      , client, tx, amount
+         deposit   , 1     , 1 , 2
+         deposit   , 2     , 2 , 3
+         dispute   , 2     , 1 ,
+         dispute   , 1     , 1 ,
+         resolve   , 2     , 1 ,
+         chargeback, 2     , 1 ,\n",
+        "client, available, held  , total , locked
+         1     , 0.0000   , 2.0000, 2.0000, false
+         2     , 3.0000   , 0.0000, 3.0000, false\n",
         3,
     );
 }
@@ -114,8 +167,17 @@ fn other_clients_cannot_change_a_deposit() {
 #[test]
 fn withdrawal_ids_do_not_create_deposit_history() {
     balances(
-        "type,client,tx,amount\ndeposit,1,1,5\nwithdrawal,1,2,1\nwithdrawal,1,2,1\ndispute,1,2,\ndeposit,2,2,2\ndispute,2,2,\nchargeback,2,2,\n",
-        "1,3.0000,0.0000,3.0000,false\n2,0.0000,0.0000,0.0000,true\n",
+        "type      , client, tx, amount
+         deposit   , 1     , 1 , 5
+         withdrawal, 1     , 2 , 1
+         withdrawal, 1     , 2 , 1
+         dispute   , 1     , 2 ,
+         deposit   , 2     , 2 , 2
+         dispute   , 2     , 2 ,
+         chargeback, 2     , 2 ,\n",
+        "client, available, held  , total , locked
+         1     , 3.0000   , 0.0000, 3.0000, false
+         2     , 0.0000   , 0.0000, 0.0000, true\n",
         1,
     );
 }
@@ -123,8 +185,15 @@ fn withdrawal_ids_do_not_create_deposit_history() {
 #[test]
 fn invalid_amounts_and_overflow_do_not_change_balances() {
     balances(
-        "type,client,tx,amount\ndeposit,1,1,922337203685477.5807\ndeposit,1,2,0.0001\nwithdrawal,1,3,-1\ndeposit,1,4,-1\nwithdrawal,1,5,0.0001\ndeposit,1,2,0.0001\n",
-        "1,922337203685477.5807,0.0000,922337203685477.5807,false\n",
+        "type      , client, tx, amount
+         deposit   , 1     , 1 , 922337203685477.5807
+         deposit   , 1     , 2 , 0.0001
+         withdrawal, 1     , 3 , -1
+         deposit   , 1     , 4 , -1
+         withdrawal, 1     , 5 , 0.0001
+         deposit   , 1     , 2 , 0.0001\n",
+        "client, available           , held  , total               , locked
+         1     , 922337203685477.5807, 0.0000, 922337203685477.5807, false\n",
         3,
     );
 }
@@ -132,8 +201,17 @@ fn invalid_amounts_and_overflow_do_not_change_balances() {
 #[test]
 fn dispute_overflow_preserves_balances_and_transaction_status() {
     balances(
-        "type,client,tx,amount\ndeposit,1,1,922337203685477.5807\nwithdrawal,1,2,922337203685477.5807\ndispute,1,1,\ndeposit,1,3,922337203685477.5807\ndispute,1,3,\nresolve,1,1,\ndispute,1,3,\nresolve,1,3,\n",
-        "1,922337203685477.5807,0.0000,922337203685477.5807,false\n",
+        "type      , client, tx, amount
+         deposit   , 1     , 1 , 922337203685477.5807
+         withdrawal, 1     , 2 , 922337203685477.5807
+         dispute   , 1     , 1 ,
+         deposit   , 1     , 3 , 922337203685477.5807
+         dispute   , 1     , 3 ,
+         resolve   , 1     , 1 ,
+         dispute   , 1     , 3 ,
+         resolve   , 1     , 3 ,\n",
+        "client, available           , held  , total               , locked
+         1     , 922337203685477.5807, 0.0000, 922337203685477.5807, false\n",
         1,
     );
 }
@@ -141,8 +219,13 @@ fn dispute_overflow_preserves_balances_and_transaction_status() {
 #[test]
 fn withdrawals_before_deposits_do_not_change_later_balances() {
     balances(
-        "type,client,tx,amount\nwithdrawal,1,7,2\ndeposit,1,1,2\nwithdrawal,1,7,2\ndispute,1,7,\n",
-        "1,0.0000,0.0000,0.0000,false\n",
+        "type      , client, tx, amount
+         withdrawal, 1     , 7 , 2
+         deposit   , 1     , 1 , 2
+         withdrawal, 1     , 7 , 2
+         dispute   , 1     , 7 ,\n",
+        "client, available, held  , total , locked
+         1     , 0.0000   , 0.0000, 0.0000, false\n",
         2,
     );
 }
@@ -150,8 +233,15 @@ fn withdrawals_before_deposits_do_not_change_later_balances() {
 #[test]
 fn a_chargeback_preserves_other_dispute_amounts() {
     balances(
-        "type,client,tx,amount\ndeposit,1,1,2\ndeposit,1,2,3\ndispute,1,1\ndispute,1,2\nchargeback,1,1\nresolve,1,2\n",
-        "1,0.0000,3.0000,3.0000,true\n",
+        "type      , client, tx, amount
+         deposit   , 1     , 1 , 2
+         deposit   , 1     , 2 , 3
+         dispute   , 1     , 1
+         dispute   , 1     , 2
+         chargeback, 1     , 1
+         resolve   , 1     , 2\n",
+        "client, available, held  , total , locked
+         1     , 0.0000   , 3.0000, 3.0000, true\n",
         1,
     );
 }
@@ -159,8 +249,16 @@ fn a_chargeback_preserves_other_dispute_amounts() {
 #[test]
 fn chargeback_preserves_available_balance_at_the_numeric_limit() {
     balances(
-        "type,client,tx,amount\ndeposit,1,1,922337203685477.5806\ndeposit,1,2,0.0001\nwithdrawal,1,3,922337203685477.5807\ndispute,1,1\ndispute,1,2\nchargeback,1,1\nresolve,1,2\n",
-        "1,-922337203685477.5807,0.0001,-922337203685477.5806,true\n",
+        "type      , client, tx, amount
+         deposit   , 1     , 1 , 922337203685477.5806
+         deposit   , 1     , 2 , 0.0001
+         withdrawal, 1     , 3 , 922337203685477.5807
+         dispute   , 1     , 1
+         dispute   , 1     , 2
+         chargeback, 1     , 1
+         resolve   , 1     , 2\n",
+        "client, available            , held  , total                , locked
+         1     , -922337203685477.5807, 0.0001, -922337203685477.5806, true\n",
         1,
     );
 }
@@ -168,22 +266,39 @@ fn chargeback_preserves_available_balance_at_the_numeric_limit() {
 #[test]
 fn control_records_cannot_replace_the_deposit_amount() {
     balances(
-        "type,client,tx,amount\ndeposit,1,1,1\ndispute,1,1,not-money\nresolve,1,1,0.00001\ndispute,1,1,-999\nchargeback,1,1,1e99\n",
-        "1,0.0000,0.0000,0.0000,true\n",
+        "type      , client, tx, amount
+         deposit   , 1     , 1 , 1
+         dispute   , 1     , 1 , not-money
+         resolve   , 1     , 1 , 0.00001
+         dispute   , 1     , 1 , -999
+         chargeback, 1     , 1 , 1e99\n",
+        "client, available, held  , total , locked
+         1     , 0.0000   , 0.0000, 0.0000, true\n",
         0,
     );
 }
 
 #[test]
 fn withdrawals_without_an_account_do_not_create_one() {
-    balances("type,client,tx,amount\nwithdrawal,1,1,1\n", "", 1);
+    balances(
+        "type      , client, tx, amount
+         withdrawal, 1     , 1 , 1\n",
+        "client,available,held,total,locked\n",
+        1,
+    );
 }
 
 #[test]
 fn decimal_math_preserves_the_smallest_unit() {
     balances(
-        "type,client,tx,amount\ndeposit,0,0,0.1\ndeposit,0,4294967295,0.2\nwithdrawal,0,2,0.3\ndeposit,65535,3,0.0001\n",
-        "0,0.0000,0.0000,0.0000,false\n65535,0.0001,0.0000,0.0001,false\n",
+        "type      , client, tx        , amount
+         deposit   , 0     , 0         , 0.1
+         deposit   , 0     , 4294967295, 0.2
+         withdrawal, 0     , 2         , 0.3
+         deposit   , 65535 , 3         , 0.0001\n",
+        "client, available, held  , total , locked
+         0     , 0.0000   , 0.0000, 0.0000, false
+         65535 , 0.0001   , 0.0000, 0.0001, false\n",
         0,
     );
 }
@@ -191,42 +306,114 @@ fn decimal_math_preserves_the_smallest_unit() {
 #[test]
 fn headers_allow_column_order_and_whitespace() {
     balances(
-        " amount , tx , client , type \n 1.25 , 1 , 2 , deposit \n , 1 , 2 , dispute \n",
-        "2,0.0000,1.2500,1.2500,false\n",
+        "amount, tx, client, type
+         1.25  , 1 , 2     , deposit
+               , 1 , 2     , dispute\n",
+        "client, available, held  , total , locked
+         2     , 0.0000   , 1.2500, 1.2500, false\n",
         0,
     );
 }
 
 #[test]
 fn header_only_input_still_produces_output_headers() {
-    balances("type,client,tx,amount\n", "", 0);
+    balances(
+        "type,client,tx,amount\n",
+        "client,available,held,total,locked\n",
+        0,
+    );
 }
 
 #[test]
 fn malformed_csv_stops_processing_without_account_output() {
-    for input in [
-        "",
-        "type,client,tx\ndeposit,1,1\n",
-        "type,client,client,amount\ndeposit,1,1,1\n",
-        "type,client,tx,amount\ndeposit,1,1,1\ndeposit,1,2,0.00001\n",
-        "type,client,tx,amount\ndeposit,1,1,\n",
-        "type,client,tx,amount\nwithdrawal,1,1,\n",
-        "type,client,tx,amount\ndeposit,1,1\n",
-        "type,client,tx,amount\nwithdrawal,1,1\n",
-        "type,client,tx,amount\ndispute,1\n",
-        "type,client,tx,amount\ndeposit,1,1,1e2\n",
-        "type,client,tx,amount\ndeposit,1,1,NaN\n",
-        "type,client,tx,amount\ndeposit,1,1,922337203685477.5808\n",
-        "type,client,tx,amount\ndeposit,65536,1,1\n",
-        "type,client,tx,amount\ndeposit,1,4294967296,1\n",
-        "type,client,tx,amount\nunknown,1,1,1\n",
-        "type,client,tx,amount\ndeposit,1,1,1,extra\n",
-        "type,client,tx,amount\ndispute,1,1,,extra\n",
+    for (case, input) in [
+        ("empty input", ""),
+        (
+            "missing amount column",
+            "type   , client, tx
+             deposit, 1     , 1\n",
+        ),
+        (
+            "duplicate client column",
+            "type   , client, client, amount
+             deposit, 1     , 1     , 1\n",
+        ),
+        (
+            "excess precision after a valid row",
+            "type   , client, tx, amount
+             deposit, 1     , 1 , 1
+             deposit, 1     , 2 , 0.00001\n",
+        ),
+        (
+            "empty deposit amount",
+            "type   , client, tx, amount
+             deposit, 1     , 1 ,\n",
+        ),
+        (
+            "empty withdrawal amount",
+            "type      , client, tx, amount
+             withdrawal, 1     , 1 ,\n",
+        ),
+        (
+            "missing deposit amount field",
+            "type   , client, tx, amount
+             deposit, 1     , 1\n",
+        ),
+        (
+            "missing withdrawal amount field",
+            "type      , client, tx, amount
+             withdrawal, 1     , 1\n",
+        ),
+        (
+            "missing dispute transaction ID",
+            "type   , client, tx, amount
+             dispute, 1\n",
+        ),
+        (
+            "exponent amount",
+            "type   , client, tx, amount
+             deposit, 1     , 1 , 1e2\n",
+        ),
+        (
+            "nondecimal amount",
+            "type   , client, tx, amount
+             deposit, 1     , 1 , NaN\n",
+        ),
+        (
+            "amount outside i64 range",
+            "type   , client, tx, amount
+             deposit, 1     , 1 , 922337203685477.5808\n",
+        ),
+        (
+            "client ID outside u16 range",
+            "type   , client, tx, amount
+             deposit, 65536 , 1 , 1\n",
+        ),
+        (
+            "transaction ID outside u32 range",
+            "type   , client, tx        , amount
+             deposit, 1     , 4294967296, 1\n",
+        ),
+        (
+            "unknown transaction type",
+            "type   , client, tx, amount
+             unknown, 1     , 1 , 1\n",
+        ),
+        (
+            "extra deposit field",
+            "type   , client, tx, amount
+             deposit, 1     , 1 , 1     , extra\n",
+        ),
+        (
+            "extra dispute field",
+            "type   , client, tx, amount
+             dispute, 1     , 1 ,       , extra\n",
+        ),
     ] {
         let output = process(input);
-        assert!(!output.status.success(), "input: {input}");
-        assert!(output.stdout.is_empty(), "input: {input}");
-        assert!(!output.stderr.is_empty(), "input: {input}");
+        assert!(!output.status.success(), "{case}:\n{input}");
+        assert!(output.stdout.is_empty(), "{case}:\n{input}");
+        assert!(!output.stderr.is_empty(), "{case}:\n{input}");
     }
 }
 
@@ -234,12 +421,15 @@ fn malformed_csv_stops_processing_without_account_output() {
 fn csv_errors_identify_the_row_and_amount_problem() {
     for (input, line, problem) in [
         (
-            "type,client,tx,amount\ndeposit,1,1,\n",
+            "type   , client, tx, amount
+             deposit, 1     , 1 ,\n",
             "line 2",
             "missing amount",
         ),
         (
-            "type,client,tx,amount\ndeposit,1,1,1\ndeposit,1,2,0.00001\n",
+            "type   , client, tx, amount
+             deposit, 1     , 1 , 1
+             deposit, 1     , 2 , 0.00001\n",
             "line 3",
             "amount exceeds four decimal places",
         ),

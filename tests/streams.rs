@@ -44,14 +44,17 @@ impl<Input: Read> Read for InterruptReader<Input> {
 #[test]
 fn read_interrupts_do_not_discard_partial_transactions() {
     let input = InterruptReader {
-        input: b"type,client,tx,amount\ndeposit,1,1,1.0001\n".as_slice(),
+        input: b"type   , client, tx, amount
+                 deposit, 1     , 1 , 1.0001\n"
+            .as_slice(),
         interrupt: true,
     };
     let mut output = Vec::new();
     process_csv(input, &mut output, io::sink()).expect("failed to retry stream interrupts");
     assert_accounts(
         &output,
-        b"client,available,held,total,locked\n1,1.0001,0.0000,1.0001,false\n",
+        b"client, available, held  , total , locked
+          1     , 1.0001   , 0.0000, 1.0001, false\n",
     );
 }
 
@@ -97,8 +100,11 @@ fn output_write_and_flush_errors_do_not_report_success() {
 #[test]
 fn diagnostic_write_and_flush_errors_do_not_report_success() {
     for input in [
-        "type,client,tx,amount\ndispute,1,1\n",
-        "type,client,tx,amount\ndispute,1,1\ndeposit,1,2,0.00001\n",
+        "type   , client, tx, amount
+         dispute, 1     , 1\n",
+        "type   , client, tx, amount
+         dispute, 1     , 1
+         deposit, 1     , 2 , 0.00001\n",
     ] {
         for flush_only in [false, true] {
             let mut output = Vec::new();
@@ -128,7 +134,11 @@ impl Read for FaultReader {
 
 #[test]
 fn input_failures_do_not_produce_account_output() {
-    for input in ["", "type,client,tx,amount\ndeposit,1,1,1\n"] {
+    for input in [
+        "",
+        "type   , client, tx, amount
+         deposit, 1     , 1 , 1\n",
+    ] {
         let mut output = Vec::new();
         let result = process_csv(input.as_bytes().chain(FaultReader), &mut output, io::sink());
         assert!(output.is_empty());
@@ -140,7 +150,10 @@ fn input_failures_do_not_produce_account_output() {
 
 #[test]
 fn csv_errors_preserve_prior_diagnostics_and_stop_processing() {
-    let input = b"type,client,tx,amount\nwithdrawal,1,1,1\ndeposit,1,2,0.00001\nwithdrawal,2,3,1\n";
+    let input = b"type      , client, tx, amount
+                  withdrawal, 1     , 1 , 1
+                  deposit   , 1     , 2 , 0.00001
+                  withdrawal, 2     , 3 , 1\n";
     let mut output = Vec::new();
     let mut diagnostics = Vec::new();
     let error = process_csv(input.as_slice(), &mut output, &mut diagnostics)

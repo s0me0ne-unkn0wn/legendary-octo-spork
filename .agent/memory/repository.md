@@ -11,6 +11,7 @@
 - process_csv uses a direct read_byte_record loop with one reusable byte record and borrowed amount text. The user requested removal of the CsvTransactions wrapper. Flush diagnostics before propagating CSV errors and before account output.
 - CSV input uses type,client,tx,amount. The transaction column is tx.
 - Account output order is unspecified after the user's b3657dc optimization. Compare CSV headers and complete record lists without row order in tests and benchmarks. Preserve duplicate counts and exact amount formatting; validation sorting must run after benchmark timing.
+- CSV test fixtures use aligned multiline tables. Expected account tables include headers, and malformed cases have descriptions. Preserve field counts, trailing newlines, and diagnostic line positions when reformatting fixtures.
 - Control records use the deposit ID and full deposit amount. They can omit a trailing amount field; the parser ignores any control amount.
 - Only deposits create accounts and history entries. Withdrawals on missing accounts return InsufficientFunds. The engine assumes unique deposit IDs and performs no duplicate ID validation.
 - ClientInfo derives Default and contains pub(crate) total, on_hold, and lock fields. It has no methods or duplicate client ID. The engine checks balance calculations before direct field assignments; CSV output uses map keys and calculates available funds from total minus on_hold.
