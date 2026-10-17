@@ -46,9 +46,9 @@ The library separates transaction processing from CSV and stream access:
 | API | Use |
 | --- | --- |
 | `process_csv(input, output, diagnostics)` | CSV pipeline over any `Read` input and `Write` outputs, using `i64` amounts |
-| `CsvTransactions::<_, Value>::new(input)` | Fallible transaction iterator over any `Read` input; reuse one CSV byte record |
-| `process_txs(transactions, diagnostics)` | Consume any iterator of `Result<Transaction<Value>, Error>` and return the account map |
-| `Engine::<Value>::default()` and `apply(transaction)` | Process records incrementally while preserving account and transaction state |
+| `CsvTransactions::new(input)` | Fallible transaction iterator over any `Read` input; reuse one CSV byte record |
+| `process_txs(transactions, diagnostics)` | Consume any iterator of `Result<Transaction, Error>` and return the account map |
+| `Engine::default()` and `apply(transaction)` | Process records incrementally while preserving account and transaction state |
 | `write_clients(&clients, output)` | Serialize an account map to any `Write` output |
 
 For memory streams:
@@ -78,7 +78,7 @@ fn process_connection(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
 
 The peer must finish its input, for example with `shutdown(Shutdown::Write)`, before reading the account response. The integration suite checks this exchange over a real loopback TCP connection. For connections without an end of input, feed records to `Engine::apply` and use `write_clients` when the application requires a snapshot. These APIs use blocking I/O.
 
-`Money<Value>` stores minor units, so `Money(12_345_i64)` represents `1.2345`. `MoneyValue` supplies checked integer operations. The library implements it for `i64` and `i128`; use `i128` for larger amounts while supporting negative balances. `CsvTransactions::<_, i128>`, `process_txs`, and `write_clients` support that type without changes to decimal parsing. `ClientId`, `TxId`, and `Money` implement `Deref`. Transaction variants require an amount for deposits and withdrawals, and account fields remain private so callers cannot bypass balance checks.
+`Money(i64)` stores minor units, so `Money(12_345)` represents `1.2345`. Parsing and balance updates use checked `i64` arithmetic. `ClientId`, `TxId`, and `Money` implement `Deref`. Transaction variants require an amount for deposits and withdrawals, and account fields remain private so callers cannot bypass balance checks.
 
 The processor does not collect input records. It reuses CSV record storage and uses 64 KiB buffers for input, output, and diagnostics. The reader retries interrupted reads before CSV parsing. Processing takes expected linear time in the number of records, plus account sorting. Memory grows with client count, unique successful monetary transactions, and the largest CSV record. The engine retains transaction history for duplicate detection, later disputes, and withdrawal validation. Repeated dispute and resolve operations reuse an existing history entry.
 

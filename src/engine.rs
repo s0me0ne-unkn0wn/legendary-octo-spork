@@ -2,22 +2,22 @@ use std::collections::{HashMap, hash_map::Entry};
 use std::fmt;
 use std::io::{self, BufWriter, Write};
 
-use crate::{ClientId, IO_BUFFER_CAPACITY, Money, MoneyValue, Transaction, TxId, TxType};
+use crate::{ClientId, IO_BUFFER_CAPACITY, Money, Transaction, TxId, TxType};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ClientInfo<Value> {
+pub struct ClientInfo {
     id: ClientId,
-    total: Money<Value>,
-    on_hold: Money<Value>,
+    total: Money,
+    on_hold: Money,
     lock: bool,
 }
 
-impl<Value: MoneyValue> ClientInfo<Value> {
+impl ClientInfo {
     fn new(id: ClientId) -> Self {
         Self {
             id,
-            total: Money(Value::ZERO),
-            on_hold: Money(Value::ZERO),
+            total: Money(0),
+            on_hold: Money(0),
             lock: false,
         }
     }
@@ -26,15 +26,15 @@ impl<Value: MoneyValue> ClientInfo<Value> {
         self.id
     }
 
-    pub fn total(&self) -> Money<Value> {
+    pub fn total(&self) -> Money {
         self.total
     }
 
-    pub fn on_hold(&self) -> Money<Value> {
+    pub fn on_hold(&self) -> Money {
         self.on_hold
     }
 
-    pub fn available(&self) -> Money<Value> {
+    pub fn available(&self) -> Money {
         Money(
             self.total
                 .0
@@ -47,7 +47,7 @@ impl<Value: MoneyValue> ClientInfo<Value> {
         self.lock
     }
 
-    fn update(&mut self, total: Value, on_hold: Value) -> Result<(), TransactionError> {
+    fn update(&mut self, total: i64, on_hold: i64) -> Result<(), TransactionError> {
         total
             .checked_sub(on_hold)
             .ok_or(TransactionError::Overflow)?;
@@ -58,17 +58,17 @@ impl<Value: MoneyValue> ClientInfo<Value> {
 }
 
 #[derive(Clone, Copy, Debug)]
-enum TxStatus<Value> {
-    Deposit(Money<Value>),
-    Dispute(Money<Value>),
+enum TxStatus {
+    Deposit(Money),
+    Dispute(Money),
     Withdrawal,
     Chargeback,
 }
 
 #[derive(Debug)]
-struct TxRecord<Value> {
+struct TxRecord {
     client_id: ClientId,
-    status: TxStatus<Value>,
+    status: TxStatus,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -106,37 +106,28 @@ impl fmt::Display for TransactionError {
 
 impl std::error::Error for TransactionError {}
 
-#[derive(Debug)]
-pub struct Engine<Value = i64> {
-    clients: HashMap<ClientId, ClientInfo<Value>>,
-    transactions: HashMap<TxId, TxRecord<Value>>,
+#[derive(Debug, Default)]
+pub struct Engine {
+    clients: HashMap<ClientId, ClientInfo>,
+    transactions: HashMap<TxId, TxRecord>,
 }
 
-impl<Value> Default for Engine<Value> {
-    fn default() -> Self {
-        Self {
-            clients: HashMap::new(),
-            transactions: HashMap::new(),
-        }
-    }
-}
-
-impl<Value: MoneyValue> Engine<Value> {
-    pub fn clients(&self) -> &HashMap<ClientId, ClientInfo<Value>> {
+impl Engine {
+    pub fn clients(&self) -> &HashMap<ClientId, ClientInfo> {
         &self.clients
     }
 
-    pub fn into_clients(self) -> HashMap<ClientId, ClientInfo<Value>> {
+    pub fn into_clients(self) -> HashMap<ClientId, ClientInfo> {
         self.clients
     }
 
-    pub fn apply(&mut self, transaction: Transaction<Value>) -> Result<(), TransactionError> {
+    pub fn apply(&mut self, transaction: Transaction) -> Result<(), TransactionError> {
         let (amount, deposit) = match transaction.ty {
             TxType::Deposit(amount) => (amount.0, true),
             TxType::Withdrawal(amount) => (amount.0, false),
             _ => return self.apply_control(transaction),
         };
-        if amount < Value::ZERO {
+        if amount < 0 {
             return Err(TransactionError::NegativeAmount);
         }
         let entry = match self.transactions.entry(transaction.id) {
@@ -180,7 +171,7 @@ impl<Value: MoneyValue> Engine<Value> {
         Ok(())
     }
 
-    fn apply_control(&mut self, transaction: Transaction<Value>) -> Result<(), TransactionError> {
+    fn apply_control(&mut self, transaction: Transaction) -> Result<(), TransactionError> {
         let record = self
             .transactions
             .get_mut(&transaction.id)
@@ -265,13 +256,12 @@ impl<InputError: std::error::Error + 'static> std::error::Error for ProcessError
     }
 }
 
-pub fn process_txs<Value, Input, InputError, Diagnostics>(
+pub fn process_txs<Input, InputError, Diagnostics>(
     transactions: Input,
     diagnostics: Diagnostics,
-) -> Result<HashMap<ClientId, ClientInfo<Value>>, ProcessError<InputError>>
+) -> Result<HashMap<ClientId, ClientInfo>, ProcessError<InputError>>
 where
-    Value: MoneyValue,
-    Input: IntoIterator<Item = Result<Transaction<Value>, InputError>>,
+    Input: IntoIterator<Item = Result<Transaction, InputError>>,
     Diagnostics: Write,
 {
     let mut engine = Engine::default();

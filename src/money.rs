@@ -1,54 +1,19 @@
 use std::fmt;
-use std::marker::PhantomData;
-use std::ops::{Deref, Div, Rem};
+use std::ops::Deref;
 use std::str::FromStr;
 
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 pub const MONEY_PRECISION: u32 = 4;
-pub const MONEY_SCALE: u16 = 10_u16.pow(MONEY_PRECISION);
-
-pub trait MoneyValue:
-    Copy + Ord + fmt::Debug + fmt::Display + From<u16> + Div<Output = Self> + Rem<Output = Self>
-{
-    const ZERO: Self;
-
-    fn checked_add(self, other: Self) -> Option<Self>;
-    fn checked_sub(self, other: Self) -> Option<Self>;
-    fn checked_mul(self, other: Self) -> Option<Self>;
-}
-
-macro_rules! impl_money_value {
-    ($($value_type:ty),+ $(,)?) => {
-        $(
-            impl MoneyValue for $value_type {
-                const ZERO: Self = 0;
-
-                fn checked_add(self, other: Self) -> Option<Self> {
-                    self.checked_add(other)
-                }
-
-                fn checked_sub(self, other: Self) -> Option<Self> {
-                    self.checked_sub(other)
-                }
-
-                fn checked_mul(self, other: Self) -> Option<Self> {
-                    self.checked_mul(other)
-                }
-            }
-        )+
-    };
-}
-
-impl_money_value!(i64, i128);
+pub const MONEY_SCALE: i64 = 10_i64.pow(MONEY_PRECISION);
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[repr(transparent)]
-pub struct Money<Value>(pub Value);
+pub struct Money(pub i64);
 
-impl<Value> Deref for Money<Value> {
-    type Target = Value;
+impl Deref for Money {
+    type Target = i64;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -74,7 +39,7 @@ impl fmt::Display for MoneyError {
 
 impl std::error::Error for MoneyError {}
 
-impl<Value: MoneyValue> FromStr for Money<Value> {
+impl FromStr for Money {
     type Err = MoneyError;
 
     fn from_str(text: &str) -> Result<Self, Self::Err> {
@@ -93,15 +58,14 @@ impl<Value: MoneyValue> FromStr for Money<Value> {
         if fraction.len() > MONEY_PRECISION as usize {
             return Err(MoneyError::Precision);
         }
-        let mut minor_units = Value::ZERO;
-        let ten = Value::from(10);
+        let mut minor_units = 0_i64;
         for digit in whole.bytes().chain(fraction.bytes()) {
             if !digit.is_ascii_digit() {
                 return Err(MoneyError::Syntax);
             }
-            let digit_value = Value::from(u16::from(digit - b'0'));
+            let digit_value = i64::from(digit - b'0');
             minor_units = minor_units
-                .checked_mul(ten)
+                .checked_mul(10)
                 .and_then(|value| {
                     if negative {
                         value.checked_sub(digit_value)
@@ -112,21 +76,18 @@ impl<Value: MoneyValue> FromStr for Money<Value> {
                 .ok_or(MoneyError::Overflow)?;
         }
         for _ in fraction.len()..MONEY_PRECISION as usize {
-            minor_units = minor_units.checked_mul(ten).ok_or(MoneyError::Overflow)?;
+            minor_units = minor_units.checked_mul(10).ok_or(MoneyError::Overflow)?;
         }
         Ok(Self(minor_units))
     }
 }
 
-impl<Value: MoneyValue> fmt::Display for Money<Value> {
+impl fmt::Display for Money {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let scale = Value::from(MONEY_SCALE);
-        let mut whole = self.0 / scale;
-        let mut fraction = self.0 % scale;
-        if self.0 < Value::ZERO {
+        let whole = (self.0 / MONEY_SCALE).unsigned_abs();
+        let fraction = (self.0 % MONEY_SCALE).unsigned_abs();
+        if self.0 < 0 {
             formatter.write_str("-")?;
-            whole = Value::ZERO.checked_sub(whole).ok_or(fmt::Error)?;
-            fraction = Value::ZERO.checked_sub(fraction).ok_or(fmt::Error)?;
         }
         write!(
             formatter,
@@ -136,7 +97,7 @@ impl<Value: MoneyValue> fmt::Display for Money<Value> {
     }
 }
 
-impl<Value: MoneyValue> Serialize for Money<Value> {
+impl Serialize for Money {
     fn serialize<Output: Serializer>(
         &self,
         serializer: Output,
@@ -145,10 +106,10 @@ impl<Value: MoneyValue> Serialize for Money<Value> {
     }
 }
 
-struct MoneyVisitor<Value>(PhantomData<Value>);
+struct MoneyVisitor;
 
-impl<'input, Value: MoneyValue> Visitor<'input> for MoneyVisitor<Value> {
-    type Value = Money<Value>;
+impl<'input> Visitor<'input> for MoneyVisitor {
+    type Value = Money;
 
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("a decimal amount with at most four decimal places")
@@ -159,8 +120,8 @@ impl<'input, Value: MoneyValue> Visitor<'input> for MoneyVisitor<Value> {
     }
 }
 
-impl<'input, Value: MoneyValue> Deserialize<'input> for Money<Value> {
+impl<'input> Deserialize<'input> for Money {
     fn deserialize<Input: Deserializer<'input>>(deserializer: Input) -> Result<Self, Input::Error> {
-        deserializer.deserialize_str(MoneyVisitor(PhantomData))
+        deserializer.deserialize_str(MoneyVisitor)
     }
 }

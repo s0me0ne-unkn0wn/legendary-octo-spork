@@ -22,12 +22,12 @@ fn memory_streams_support_the_csv_pipeline() {
 }
 
 #[test]
-fn transaction_iterators_support_i128_amounts() {
+fn transaction_iterators_accept_records_without_csv() {
     let transactions = [
         Transaction {
             client_id: ClientId(7),
             id: TxId(8),
-            ty: TxType::Deposit(Money(100_000_000_000_000_000_000_i128)),
+            ty: TxType::Deposit(Money(12_345)),
         },
         Transaction {
             client_id: ClientId(7),
@@ -39,34 +39,25 @@ fn transaction_iterators_support_i128_amounts() {
         transactions.into_iter().map(Ok::<_, Infallible>),
         io::sink(),
     )
-    .expect("failed to process i128 transactions");
+    .expect("failed to process transaction iterator");
     let mut output = Vec::new();
-    write_clients(&clients, &mut output).expect("failed to write i128 clients");
+    write_clients(&clients, &mut output).expect("failed to write clients");
     assert_eq!(
         output,
-        b"client,available,held,total,locked\n7,9999999999999999.9999,0.0000,9999999999999999.9999,false\n"
+        b"client,available,held,total,locked\n7,1.2344,0.0000,1.2344,false\n"
     );
 }
 
 #[test]
-fn csv_transactions_support_i128_without_decimal_rounding() {
-    let input = b"type,client,txid,amount\ndeposit,1,1,17014118346046923173168730371588410.5727\n";
-    let transactions = CsvTransactions::<_, i128>::new(input.as_slice())
-        .expect("failed to create i128 transaction source");
-    let clients = process_txs(transactions, io::sink()).expect("failed to process i128 CSV");
-    assert_eq!(clients[&ClientId(1)].total(), Money(i128::MAX));
-}
-
-#[test]
 fn incremental_processing_preserves_state_between_inputs() {
-    let mut engine = Engine::<i64>::default();
+    let mut engine = Engine::default();
     for input in [
         "type,client,txid,amount\ndeposit,1,1,2\n",
         "type,client,txid,amount\ndispute,1,1,\n",
         "type,client,txid,amount\nresolve,1,1,\nwithdrawal,1,2,1\n",
     ] {
-        for transaction in CsvTransactions::<_, i64>::new(input.as_bytes())
-            .expect("failed to create transaction source")
+        for transaction in
+            CsvTransactions::new(input.as_bytes()).expect("failed to create transaction source")
         {
             engine
                 .apply(transaction.expect("failed to read transaction"))
@@ -283,7 +274,7 @@ fn input_failure_after_a_valid_transaction_stops_account_output() {
 fn csv_iteration_stops_after_a_record_error() {
     let input = b"type,client,txid,amount\ndeposit,1,1,0.00001\ndeposit,1,2,1\n";
     let mut transactions =
-        CsvTransactions::<_, i64>::new(input.as_slice()).expect("failed to create CSV source");
+        CsvTransactions::new(input.as_slice()).expect("failed to create CSV source");
     assert!(transactions.next().expect("missing error record").is_err());
     assert!(transactions.next().is_none());
     assert!(transactions.next().is_none());

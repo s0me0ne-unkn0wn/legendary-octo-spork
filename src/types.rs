@@ -31,17 +31,17 @@ impl Deref for TxId {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum TxType<Value> {
-    Deposit(Money<Value>),
-    Withdrawal(Money<Value>),
+pub enum TxType {
+    Deposit(Money),
+    Withdrawal(Money),
     Dispute,
     Resolve,
     Chargeback,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Transaction<Value> {
-    pub ty: TxType<Value>,
+pub struct Transaction {
+    pub ty: TxType,
     pub client_id: ClientId,
     pub id: TxId,
 }

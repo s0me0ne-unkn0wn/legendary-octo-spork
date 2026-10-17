@@ -2,13 +2,12 @@ use std::collections::HashMap;
 use std::fmt;
 use std::io::{self, Read, Write};
 use std::iter::FusedIterator;
-use std::marker::PhantomData;
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ClientId, ClientInfo, IO_BUFFER_CAPACITY, Money, MoneyValue, ProcessError, Transaction, TxId,
-    TxType, process_txs,
+    ClientId, ClientInfo, IO_BUFFER_CAPACITY, Money, ProcessError, Transaction, TxId, TxType,
+    process_txs,
 };
 
 #[derive(Debug)]
@@ -53,13 +52,12 @@ enum CsvTxType {
 }
 
 #[derive(Deserialize)]
-#[serde(bound(deserialize = "Value: MoneyValue"))]
-struct CsvTransaction<Value> {
+struct CsvTransaction {
     #[serde(rename = "type")]
     ty: CsvTxType,
     client: ClientId,
     txid: TxId,
-    amount: Option<Money<Value>>,
+    amount: Option<Money>,
 }
 
 struct RetryReader<Input>(Input);
@@ -75,15 +73,14 @@ impl<Input: Read> Read for RetryReader<Input> {
     }
 }
 
-pub struct CsvTransactions<Input, Value = i64> {
+pub struct CsvTransactions<Input> {
     reader: csv::Reader<RetryReader<Input>>,
     headers: csv::ByteRecord,
     record: csv::ByteRecord,
     stop: bool,
-    value_type: PhantomData<Value>,
 }
 
-impl<Input: Read, Value: MoneyValue> CsvTransactions<Input, Value> {
+impl<Input: Read> CsvTransactions<Input> {
     pub fn new(input: Input) -> Result<Self, InputError> {
         let mut reader = csv::ReaderBuilder::new()
             .trim(csv::Trim::All)
@@ -103,11 +100,10 @@ impl<Input: Read, Value: MoneyValue> CsvTransactions<Input, Value> {
             headers,
             record: csv::ByteRecord::with_capacity(128, 4),
             stop: false,
-            value_type: PhantomData,
         })
     }
 
-    fn read_transaction(&mut self) -> Result<Option<Transaction<Value>>, InputError> {
+    fn read_transaction(&mut self) -> Result<Option<Transaction>, InputError> {
         if !self
             .reader
             .read_byte_record(&mut self.record)
@@ -115,7 +111,7 @@ impl<Input: Read, Value: MoneyValue> CsvTransactions<Input, Value> {
         {
             return Ok(None);
         }
-        let record: CsvTransaction<Value> = self
+        let record: CsvTransaction = self
             .record
             .deserialize(Some(&self.headers))
             .map_err(InputError::Csv)?;
@@ -139,8 +135,8 @@ impl<Input: Read, Value: MoneyValue> CsvTransactions<Input, Value> {
     }
 }
 
-impl<Input: Read, Value: MoneyValue> Iterator for CsvTransactions<Input, Value> {
-    type Item = Result<Transaction<Value>, InputError>;
+impl<Input: Read> Iterator for CsvTransactions<Input> {
+    type Item = Result<Transaction, InputError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.stop {
@@ -160,22 +156,21 @@ impl<Input: Read, Value: MoneyValue> Iterator for CsvTransactions<Input, Value> 
     }
 }
 
-impl<Input: Read, Value: MoneyValue> FusedIterator for CsvTransactions<Input, Value> {}
+impl<Input: Read> FusedIterator for CsvTransactions<Input> {}
 
 #[derive(Serialize)]
-#[serde(bound(serialize = "Value: MoneyValue"))]
-struct CsvClient<Value> {
+struct CsvClient {
     client: ClientId,
-    available: Money<Value>,
+    available: Money,
     #[serde(rename = "held")]
-    on_hold: Money<Value>,
-    total: Money<Value>,
+    on_hold: Money,
+    total: Money,
     #[serde(rename = "locked")]
     lock: bool,
 }
 
-pub fn write_clients<Value: MoneyValue, Output: Write>(
-    clients: &HashMap<ClientId, ClientInfo<Value>>,
+pub fn write_clients<Output: Write>(
+    clients: &HashMap<ClientId, ClientInfo>,
     output: Output,
 ) -> Result<(), CsvError> {
     let mut writer = csv::WriterBuilder::new()
@@ -232,7 +227,7 @@ pub fn process_csv<Input: Read, Output: Write, Diagnostics: Write>(
     output: Output,
     diagnostics: Diagnostics,
 ) -> Result<(), CsvError> {
-    let transactions = CsvTransactions::<_, i64>::new(input)
+    let transactions = CsvTransactions::new(input)
         .map_err(|error| CsvError::Process(ProcessError::Input(error)))?;
     let clients = process_txs(transactions, diagnostics).map_err(CsvError::Process)?;
     write_clients(&clients, output)
