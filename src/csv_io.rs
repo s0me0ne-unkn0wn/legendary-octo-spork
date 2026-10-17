@@ -4,7 +4,7 @@ use std::io::{self, BufWriter, Read, Write};
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
-use crate::{ClientId, ClientInfo, Engine, IO_BUFFER_CAPACITY, Money, Transaction, TxId, TxType};
+use crate::{ClientId, ClientInfo, Engine, IO_BUFFER_CAPACITY, Money, RECORD_BUFFER_SIZE, RECORD_MAX_FIELDS, Transaction, TxId, TxType};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -58,7 +58,7 @@ fn read_clients<Input: Read>(
         bail!("invalid CSV header: require type,client,tx,amount exactly once in any order");
     }
     let mut engine = Engine::default();
-    let mut record = csv::ByteRecord::with_capacity(128, 4);
+    let mut record = csv::ByteRecord::with_capacity(RECORD_BUFFER_SIZE, RECORD_MAX_FIELDS);
     while reader
         .read_byte_record(&mut record)
         .context("failed to read CSV")?
