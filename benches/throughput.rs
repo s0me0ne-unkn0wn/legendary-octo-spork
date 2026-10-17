@@ -54,8 +54,8 @@ fn mixed(groups: u32) -> Workload {
         writeln!(input, "deposit,{client},{id},2.0001").expect("failed to format benchmark input");
         writeln!(input, "withdrawal,{client},{},1.0000", id + 1)
             .expect("failed to format benchmark input");
-        writeln!(input, "dispute,{client},{id},").expect("failed to format benchmark input");
-        writeln!(input, "resolve,{client},{id},").expect("failed to format benchmark input");
+        writeln!(input, "dispute,{client},{id}").expect("failed to format benchmark input");
+        writeln!(input, "resolve,{client},{id}").expect("failed to format benchmark input");
         counts[client as usize] += 1;
         last_ids[client as usize] = id;
     }
@@ -65,8 +65,8 @@ fn mixed(groups: u32) -> Workload {
             continue;
         }
         let id = last_ids[client];
-        writeln!(input, "dispute,{client},{id},").expect("failed to format benchmark input");
-        writeln!(input, "chargeback,{client},{id},").expect("failed to format benchmark input");
+        writeln!(input, "dispute,{client},{id}").expect("failed to format benchmark input");
+        writeln!(input, "chargeback,{client},{id}").expect("failed to format benchmark input");
         rows += 2;
     }
     Workload {

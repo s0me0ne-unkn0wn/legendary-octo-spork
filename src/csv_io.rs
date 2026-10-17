@@ -20,12 +20,13 @@ enum CsvTxType {
 }
 
 #[derive(Deserialize)]
-struct CsvTransaction {
+struct CsvTransaction<'record> {
     #[serde(rename = "type")]
     ty: CsvTxType,
     client: ClientId,
     tx: TxId,
-    amount: Option<Money>,
+    #[serde(borrow)]
+    amount: Option<&'record str>,
 }
 
 struct RetryReader<Input>(Input);
@@ -52,6 +53,7 @@ impl<Input: Read> CsvTransactions<Input> {
     pub fn new(input: Input) -> Result<Self> {
         let mut reader = csv::ReaderBuilder::new()
             .trim(csv::Trim::All)
+            .flexible(true)
             .buffer_capacity(IO_BUFFER_CAPACITY)
             .from_reader(RetryReader(input));
         let headers = reader.byte_headers().context("failed to read CSV")?.clone();
@@ -75,14 +77,19 @@ impl<Input: Read> CsvTransactions<Input> {
         if !self.reader.read_byte_record(&mut self.record)? {
             return Ok(None);
         }
-        let record: CsvTransaction = self.record.deserialize(Some(&self.headers))?;
+        if self.record.len() > self.headers.len() {
+            bail!(
+                "too many fields at CSV line {}",
+                self.record.position().map_or(0, csv::Position::line)
+            );
+        }
+        let record: CsvTransaction<'_> = self.record.deserialize(Some(&self.headers))?;
         let amount = || {
-            record.amount.with_context(|| {
-                format!(
-                    "missing amount at CSV line {}: deposits and withdrawals require an amount",
-                    self.record.position().map_or(0, csv::Position::line)
-                )
-            })
+            let line = self.record.position().map_or(0, csv::Position::line);
+            record.amount
+                .with_context(|| format!("missing amount at CSV line {line}: deposits and withdrawals require an amount"))?
+                .parse::<Money>()
+                .with_context(|| format!("invalid amount at CSV line {line}"))
         };
         let ty = match record.ty {
             CsvTxType::Deposit => TxType::Deposit(amount()?),

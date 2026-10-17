@@ -4,8 +4,8 @@ use std::net::{Shutdown, TcpListener, TcpStream};
 use std::time::Duration;
 
 use legendary_octo_spork::{
-    ClientId, CsvTransactions, Engine, Money, Transaction, TxId, TxType, process_csv, process_txs,
-    write_clients,
+    ClientId, CsvTransactions, Engine, Money, Transaction, TransactionError, TxId, TxType,
+    process_csv, process_txs, write_clients,
 };
 
 #[test]
@@ -65,6 +65,23 @@ fn incremental_processing_preserves_state_between_inputs() {
         }
     }
     assert_eq!(engine.clients()[&ClientId(1)].available(), Money(10_000));
+}
+
+#[test]
+fn withdrawals_on_missing_accounts_return_errors_without_clients() {
+    let mut engine = Engine::default();
+    for amount in [0, 10_000] {
+        let transaction = Transaction {
+            client_id: ClientId(1),
+            id: TxId(1),
+            ty: TxType::Withdrawal(Money(amount)),
+        };
+        assert_eq!(
+            engine.apply(transaction),
+            Err(TransactionError::InsufficientFunds)
+        );
+        assert!(engine.clients().is_empty());
+    }
 }
 
 struct ShortStream<Stream> {
@@ -265,7 +282,7 @@ fn tcp_streams_support_the_same_csv_pipeline() {
         .set_read_timeout(Some(Duration::from_secs(10)))
         .expect("failed to set read timeout");
     stream
-        .write_all(b"type,client,tx,amount\ndeposit,1,1,1.2345\n")
+        .write_all(b"type,client,tx,amount\ndeposit,1,1,1.2345\ndispute,1,1\nresolve,1,1\n")
         .expect("failed to write TCP input");
     stream
         .shutdown(Shutdown::Write)

@@ -65,7 +65,7 @@ fn withdrawals_cannot_use_money_on_hold() {
 #[test]
 fn resolve_allows_a_later_dispute() {
     balances(
-        "type,client,tx,amount\ndeposit,1,1,2.125\ndispute,1,1,\nresolve,1,1,\ndispute,1,1,\n",
+        "type,client,tx,amount\ndeposit,1,1,2.125\ndispute,1,1\nresolve,1,1\ndispute,1,1\n",
         "1,0.0000,2.1250,2.1250,false\n",
         0,
     );
@@ -74,7 +74,7 @@ fn resolve_allows_a_later_dispute() {
 #[test]
 fn disputes_can_make_available_balances_negative() {
     balances(
-        "type,client,tx,amount\ndeposit,1,1,1\nwithdrawal,1,2,0.9999\ndispute,1,1,\n",
+        "type,client,tx,amount\ndeposit,1,1,1\nwithdrawal,1,2,0.9999\ndispute,1,1\n",
         "1,-0.9999,1.0000,0.0001,false\n",
         0,
     );
@@ -108,11 +108,11 @@ fn other_clients_cannot_change_a_deposit() {
 }
 
 #[test]
-fn transaction_ids_prevent_duplicate_credits_and_debits() {
+fn withdrawal_ids_do_not_create_deposit_history() {
     balances(
-        "type,client,tx,amount\ndeposit,1,1,5\ndeposit,1,1,20\ndeposit,2,1,20\nwithdrawal,1,2,1\nwithdrawal,1,2,1\ndeposit,1,2,10\ndispute,1,1,\nchargeback,1,1,\ndeposit,2,1,10\n",
-        "1,-1.0000,0.0000,-1.0000,true\n",
-        5,
+        "type,client,tx,amount\ndeposit,1,1,5\nwithdrawal,1,2,1\nwithdrawal,1,2,1\ndispute,1,2,\ndeposit,2,2,2\ndispute,2,2,\nchargeback,2,2,\n",
+        "1,3.0000,0.0000,3.0000,false\n2,0.0000,0.0000,0.0000,true\n",
+        1,
     );
 }
 
@@ -135,7 +135,7 @@ fn dispute_overflow_preserves_balances_and_transaction_status() {
 }
 
 #[test]
-fn withdrawals_without_funds_do_not_reserve_transaction_ids() {
+fn withdrawals_before_deposits_do_not_change_later_balances() {
     balances(
         "type,client,tx,amount\nwithdrawal,1,7,2\ndeposit,1,1,2\nwithdrawal,1,7,2\ndispute,1,7,\n",
         "1,0.0000,0.0000,0.0000,false\n",
@@ -146,7 +146,7 @@ fn withdrawals_without_funds_do_not_reserve_transaction_ids() {
 #[test]
 fn a_chargeback_preserves_other_dispute_amounts() {
     balances(
-        "type,client,tx,amount\ndeposit,1,1,2\ndeposit,1,2,3\ndispute,1,1,\ndispute,1,2,\nchargeback,1,1,\nresolve,1,2,\n",
+        "type,client,tx,amount\ndeposit,1,1,2\ndeposit,1,2,3\ndispute,1,1\ndispute,1,2\nchargeback,1,1\nresolve,1,2\n",
         "1,0.0000,3.0000,3.0000,true\n",
         1,
     );
@@ -155,19 +155,15 @@ fn a_chargeback_preserves_other_dispute_amounts() {
 #[test]
 fn control_records_cannot_replace_the_deposit_amount() {
     balances(
-        "type,client,tx,amount\ndeposit,1,1,1\ndispute,1,1,999\nresolve,1,1,0\ndispute,1,1,0\nchargeback,1,1,999\n",
+        "type,client,tx,amount\ndeposit,1,1,1\ndispute,1,1,not-money\nresolve,1,1,0.00001\ndispute,1,1,-999\nchargeback,1,1,1e99\n",
         "1,0.0000,0.0000,0.0000,true\n",
         0,
     );
 }
 
 #[test]
-fn insufficient_funds_still_reports_the_client_account() {
-    balances(
-        "type,client,tx,amount\nwithdrawal,1,1,1\n",
-        "1,0.0000,0.0000,0.0000,false\n",
-        1,
-    );
+fn withdrawals_without_an_account_do_not_create_one() {
+    balances("type,client,tx,amount\nwithdrawal,1,1,1\n", "", 1);
 }
 
 #[test]
@@ -202,6 +198,9 @@ fn malformed_csv_stops_processing_without_account_output() {
         "type,client,tx,amount\ndeposit,1,1,1\ndeposit,1,2,0.00001\n",
         "type,client,tx,amount\ndeposit,1,1,\n",
         "type,client,tx,amount\nwithdrawal,1,1,\n",
+        "type,client,tx,amount\ndeposit,1,1\n",
+        "type,client,tx,amount\nwithdrawal,1,1\n",
+        "type,client,tx,amount\ndispute,1\n",
         "type,client,tx,amount\ndeposit,1,1,1e2\n",
         "type,client,tx,amount\ndeposit,1,1,NaN\n",
         "type,client,tx,amount\ndeposit,1,1,922337203685477.5808\n",
@@ -209,6 +208,7 @@ fn malformed_csv_stops_processing_without_account_output() {
         "type,client,tx,amount\ndeposit,1,4294967296,1\n",
         "type,client,tx,amount\nunknown,1,1,1\n",
         "type,client,tx,amount\ndeposit,1,1,1,extra\n",
+        "type,client,tx,amount\ndispute,1,1,,extra\n",
     ] {
         let output = process(input);
         assert!(!output.status.success(), "input: {input}");
@@ -227,7 +227,7 @@ fn csv_errors_identify_the_row_and_amount_problem() {
         ),
         (
             "type,client,tx,amount\ndeposit,1,1,1\ndeposit,1,2,0.00001\n",
-            "line: 3",
+            "line 3",
             "amount exceeds four decimal places",
         ),
     ] {

@@ -9,16 +9,16 @@
     {
       "type": "deposits",
       "rows": 1000000,
-      "median_seconds": 0.192790,
-      "rows_per_second": 5186982,
-      "mib_per_second": 127.65
+      "median_seconds": 0.204244,
+      "rows_per_second": 4896110,
+      "mib_per_second": 120.49
     },
     {
       "type": "mixed",
       "rows": 1002048,
-      "median_seconds": 0.155015,
-      "rows_per_second": 6464199,
-      "mib_per_second": 144.50
+      "median_seconds": 0.160194,
+      "rows_per_second": 6255210,
+      "mib_per_second": 136.84
     }
   ]
 }

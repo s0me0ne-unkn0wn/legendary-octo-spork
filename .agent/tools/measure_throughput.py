@@ -19,10 +19,13 @@ def create_input(directory, workload, rows):
         stream.write("type,client,tx,amount\n")
         if workload == "deposits":
             stream.writelines(f"deposit,{index % 1024},{index},1.0001\n" for index in range(rows))
+        elif workload == "withdrawals":
+            stream.write(f"deposit,1,0,{decimal(rows - 1)}\n")
+            stream.writelines(f"withdrawal,1,{index},0.0001\n" for index in range(1, rows))
         else:
             stream.write("deposit,1,1,1\n")
             stream.writelines(
-                f"{'dispute' if index % 2 == 0 else 'resolve'},1,1,\n"
+                f"{'dispute' if index % 2 == 0 else 'resolve'},1,1\n"
                 for index in range(rows - 1)
             )
     output = "client,available,held,total,locked\n"
@@ -31,6 +34,8 @@ def create_input(directory, workload, rows):
             count = (rows - 1 - client) // 1024 + 1
             total = decimal(count * 10_001)
             output += f"{client},{total},0.0000,{total},false\n"
+    elif workload == "withdrawals":
+        output += "1,0.0000,0.0000,0.0000,false\n"
     else:
         on_hold = rows % 2 == 0
         output += f"1,{'0.0000,1.0000' if on_hold else '1.0000,0.0000'},1.0000,false\n"
@@ -82,7 +87,7 @@ def main():
     directory.mkdir(parents=True, exist_ok=True)
     binary = root / "target/release/legendary-octo-spork"
     results = []
-    for workload in ["deposits", "disputes"]:
+    for workload in ["deposits", "withdrawals", "disputes"]:
         for rows in arguments.rows:
             path, output = create_input(directory, workload, rows)
             samples = measure(binary, path, output, arguments.rounds)

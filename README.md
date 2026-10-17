@@ -8,14 +8,14 @@ cargo run --release -- input.csv > accounts.csv
 
 The CLI accepts exactly one file path. It writes account CSV to stdout and transaction errors to stderr. Invalid CSV or an I/O failure produces a nonzero exit status. The processor reads the complete input before it writes account output.
 
-Input requires the columns `type,client,tx,amount` exactly once, in any order. The parser trims surrounding whitespace. Every row must contain four fields; control records can leave `amount` empty.
+Input requires the columns `type,client,tx,amount` exactly once, in any order. The parser trims surrounding whitespace. Deposits and withdrawals require an amount. Dispute, resolve, and chargeback records use only `type`, `client`, and `tx`; they can omit a trailing amount field or leave it empty. Any supplied amount on these records has no effect.
 
 ```csv
 type,client,tx,amount
 deposit,1,1,2.0001
 withdrawal,1,2,0.5000
-dispute,1,1,
-resolve,1,1,
+dispute,1,1
+resolve,1,1
 deposit,2,3,1
 ```
 
@@ -27,19 +27,19 @@ client,available,held,total,locked
 2,1.0000,0.0000,1.0000,false
 ```
 
-Output uses ascending client IDs and exactly four decimal places. Client IDs use `u16`; transaction IDs use `u32`. Both types accept zero. Amount syntax requires integer digits and optionally a decimal point with one to four fractional digits. The processor rejects excess precision, exponent notation, and amounts outside the numeric range. It never rounds or converts amounts through floating point.
+Output uses ascending client IDs and exactly four decimal places. Client IDs use `u16`; transaction IDs use `u32`. Both types accept zero. Deposit and withdrawal amounts require integer digits and optionally a decimal point with one to four fractional digits. The processor rejects excess precision, exponent notation, and amounts outside the numeric range. It never rounds or converts amounts through floating point.
 
 | Operation | Requirements | Account changes |
 | --- | --- | --- |
-| Deposit | New transaction ID; nonnegative amount | Increase total and available |
-| Withdrawal | New transaction ID; nonnegative amount; sufficient available funds | Decrease total and available |
+| Deposit | Nonnegative amount | Create the account if necessary; increase total and available |
+| Withdrawal | Existing account; nonnegative amount; sufficient available funds | Decrease total and available |
 | Dispute | The same client's deposit without an active dispute | Increase funds on hold; decrease available |
 | Resolve | The same client's deposit with an active dispute | Decrease funds on hold; increase available |
 | Chargeback | The same client's deposit with an active dispute | Decrease total and funds on hold; lock the account |
 
 A resolve permits another dispute on the same deposit. Withdrawals do not support dispute, resolve, or chargeback. Disputes can make available funds negative after a withdrawal. A chargeback can make total funds negative and prevents all later activity on the account, including changes to other disputes.
 
-Transaction IDs have global scope. The engine rejects duplicate deposits and withdrawals, references to another client's transaction, invalid state changes, negative amounts, and arithmetic overflow. These errors leave balances and transaction status unchanged; the processor reports each error and continues. Only successful deposits and withdrawals reserve new transaction IDs. The first monetary operation with a new transaction ID and a nonnegative amount creates a client account, including a withdrawal with insufficient funds. Invalid control records do not create accounts. Control records always use the deposit amount; a nonempty amount field still requires valid decimal syntax.
+Deposit IDs have global scope, and the processor assumes that input deposit IDs are unique. It performs no duplicate ID validation. Only deposits create accounts. A withdrawal on a missing account returns an error without creating an account. The engine also rejects references to another client's deposit, invalid state changes, negative amounts, and arithmetic overflow. These errors leave balances and deposit state unchanged; the processor reports each error and continues. Disputes, resolves, and chargebacks always use the deposit's full amount.
 
 The library separates transaction processing from CSV and stream access:
 
@@ -80,7 +80,7 @@ The peer must finish its input, for example with `shutdown(Shutdown::Write)`, be
 
 `Money(i64)` stores minor units, so `Money(12_345)` represents `1.2345`. Parsing and balance updates use checked `i64` arithmetic. `ClientId`, `TxId`, and `Money` implement `Deref`. Transaction variants require an amount for deposits and withdrawals, and account fields remain private so callers cannot bypass balance checks.
 
-The processor does not collect input records. It reuses CSV record storage and uses 64 KiB buffers for input, output, and diagnostics. The reader retries interrupted reads before CSV parsing. Processing takes expected linear time in the number of records, plus account sorting. Memory grows with client count, unique successful monetary transactions, and the largest CSV record. The engine retains transaction history for duplicate detection, later disputes, and withdrawal validation. Repeated dispute and resolve operations reuse an existing history entry.
+The processor does not collect input records. It reuses CSV record storage and uses 64 KiB buffers for input, output, and diagnostics. The reader retries interrupted reads before CSV parsing. Processing takes expected linear time in the number of records, plus account sorting. Memory grows with client count, successful deposits, and the largest CSV record. The engine stores deposit amounts, owners, and dispute flags. Withdrawals create no history entries, and repeated dispute and resolve operations update the same deposit.
 
 Run checks and the throughput benchmark with:
 
@@ -98,16 +98,18 @@ On 2026-10-17, Rust 1.94.1 on an Intel Core i9-13900K in this Linux container pr
 
 | In-memory CSV workload | Records | Median time | Records/second | Input MiB/second |
 | --- | ---: | ---: | ---: | ---: |
-| Unique deposits, 1,024 clients | 1,000,000 | 0.193 s | 5.19 million | 127.65 |
-| Deposits, withdrawals, disputes, resolves, and chargebacks | 1,002,048 | 0.155 s | 6.46 million | 144.50 |
+| Unique deposits, 1,024 clients | 1,000,000 | 0.204 s | 4.90 million | 120.49 |
+| Deposits, withdrawals, disputes, resolves, and chargebacks | 1,002,048 | 0.160 s | 6.26 million | 136.84 |
 
 Separate CLI measurements use files with one million and four million rows, with three runs per input and complete output validation. Linux `VmHWM` samples track peak process memory after startup:
 
 | CLI workload | Records | Median time | Records/second | Peak memory |
 | --- | ---: | ---: | ---: | ---: |
-| Unique deposits, 1,024 clients | 1,000,000 | 0.200 s | 4.99 million | 101.3 MiB |
-| Unique deposits, 1,024 clients | 4,000,000 | 0.807 s | 4.96 million | 398.2 MiB |
-| Repeated dispute/resolve on one deposit | 1,000,000 | 0.115 s | 8.73 million | 2.3 MiB |
-| Repeated dispute/resolve on one deposit | 4,000,000 | 0.420 s | 9.53 million | 2.2 MiB |
+| Unique deposits, 1,024 clients | 1,000,000 | 0.213 s | 4.70 million | 77.4 MiB |
+| Unique deposits, 1,024 clients | 4,000,000 | 0.856 s | 4.67 million | 302.3 MiB |
+| Withdrawals after one initial deposit | 1,000,000 | 0.159 s | 6.28 million | 2.2 MiB |
+| Withdrawals after one initial deposit | 4,000,000 | 0.605 s | 6.61 million | 2.3 MiB |
+| Repeated dispute/resolve on one deposit | 1,000,000 | 0.112 s | 8.92 million | 2.2 MiB |
+| Repeated dispute/resolve on one deposit | 4,000,000 | 0.412 s | 9.70 million | 2.3 MiB |
 
-These measurements describe this environment; the benchmark does not enforce a hardware-dependent timing limit. History growth accounts for the memory increase with unique deposits. Repeated control records do not increase history size.
+The withdrawal record counts include the initial deposit. These measurements describe this environment; the benchmark does not enforce a hardware-dependent timing limit. History growth accounts for the memory increase with unique deposits. Withdrawals and repeated control records do not increase history size.
