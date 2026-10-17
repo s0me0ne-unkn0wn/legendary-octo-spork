@@ -1,0 +1,24 @@
+{
+  "date": "2026-10-17",
+  "command": "cargo bench --bench throughput --locked",
+  "rustc": "rustc 1.94.1 (e408947bf 2026-03-25)",
+  "cpu": "Intel Core i9-13900K",
+  "warmup_runs": 1,
+  "measurement_runs": 5,
+  "workloads": [
+    {
+      "type": "deposits",
+      "rows": 1000000,
+      "median_seconds": 0.192790,
+      "rows_per_second": 5186982,
+      "mib_per_second": 127.65
+    },
+    {
+      "type": "mixed",
+      "rows": 1002048,
+      "median_seconds": 0.155015,
+      "rows_per_second": 6464199,
+      "mib_per_second": 144.50
+    }
+  ]
+}

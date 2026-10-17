@@ -1,0 +1,105 @@
+{
+  "rustc": "rustc 1.94.1 (e408947bf 2026-03-25)",
+  "results": [
+    {
+      "workload": "deposits",
+      "rows": 1000000,
+      "input_bytes": 25804868,
+      "median_seconds": 0.20042385498527437,
+      "rows_per_second": 4989426.03450808,
+      "peak_rss_kib": 103700,
+      "samples": [
+        {
+          "seconds": 0.20042385498527437,
+          "peak_rss_kib": 103636,
+          "resource_peak_rss_kib": 103636
+        },
+        {
+          "seconds": 0.2004060010658577,
+          "peak_rss_kib": 103700,
+          "resource_peak_rss_kib": 103700
+        },
+        {
+          "seconds": 0.20055955403950065,
+          "peak_rss_kib": 103672,
+          "resource_peak_rss_kib": 103620
+        }
+      ]
+    },
+    {
+      "workload": "deposits",
+      "rows": 4000000,
+      "input_bytes": 106552888,
+      "median_seconds": 0.806978732929565,
+      "rows_per_second": 4956760.118669855,
+      "peak_rss_kib": 407784,
+      "samples": [
+        {
+          "seconds": 0.7982437850441784,
+          "peak_rss_kib": 407760,
+          "resource_peak_rss_kib": 407760
+        },
+        {
+          "seconds": 0.806978732929565,
+          "peak_rss_kib": 407680,
+          "resource_peak_rss_kib": 407680
+        },
+        {
+          "seconds": 0.8195411959895864,
+          "peak_rss_kib": 407784,
+          "resource_peak_rss_kib": 407784
+        }
+      ]
+    },
+    {
+      "workload": "disputes",
+      "rows": 1000000,
+      "input_bytes": 13000025,
+      "median_seconds": 0.11461177398450673,
+      "rows_per_second": 8725107.0743847,
+      "peak_rss_kib": 2356,
+      "samples": [
+        {
+          "seconds": 0.11461177398450673,
+          "peak_rss_kib": 2232,
+          "resource_peak_rss_kib": 18496
+        },
+        {
+          "seconds": 0.11550430802162737,
+          "peak_rss_kib": 2356,
+          "resource_peak_rss_kib": 18496
+        },
+        {
+          "seconds": 0.11441758403088897,
+          "peak_rss_kib": 2200,
+          "resource_peak_rss_kib": 18496
+        }
+      ]
+    },
+    {
+      "workload": "disputes",
+      "rows": 4000000,
+      "input_bytes": 52000025,
+      "median_seconds": 0.4199316999875009,
+      "rows_per_second": 9525358.528825184,
+      "peak_rss_kib": 2232,
+      "samples": [
+        {
+          "seconds": 0.4199316999875009,
+          "peak_rss_kib": 2232,
+          "resource_peak_rss_kib": 18496
+        },
+        {
+          "seconds": 0.41559726803097874,
+          "peak_rss_kib": 2152,
+          "resource_peak_rss_kib": 18496
+        },
+        {
+          "seconds": 0.4242050170432776,
+          "peak_rss_kib": 2164,
+          "resource_peak_rss_kib": 18496
+        }
+      ]
+    }
+  ]
+}
