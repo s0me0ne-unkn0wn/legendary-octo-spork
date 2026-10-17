@@ -1,11 +1,11 @@
 mod csv_io;
 mod engine;
-mod money;
 mod types;
 
 pub use csv_io::{process_csv, write_clients};
 pub use engine::{ClientInfo, Engine, TransactionError, process_txs};
-pub use money::{MONEY_PRECISION, MONEY_SCALE, Money, MoneyError};
-pub use types::{ClientId, Transaction, TxId, TxType};
+pub use types::{ClientId, Money, MoneyError, Transaction, TxId, TxType};
 
 const IO_BUFFER_CAPACITY: usize = 64 * 1024;
+const MONEY_PRECISION: u32 = 4;
+const MONEY_SCALE: i64 = 10_i64.pow(MONEY_PRECISION);
