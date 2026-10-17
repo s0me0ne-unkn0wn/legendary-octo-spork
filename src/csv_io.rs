@@ -122,9 +122,7 @@ pub fn write_clients(clients: &HashMap<ClientId, ClientInfo>, output: impl Write
     writer
         .write_record(["client", "available", "held", "total", "locked"])
         .context("failed to write account CSV")?;
-    let mut clients: Vec<_> = clients.iter().collect();
-    clients.sort_unstable_by_key(|(client_id, _)| client_id.0);
-    for (client_id, client) in clients {
+    for (client_id, client) in clients.iter() {
         writer
             .serialize(CsvClient {
                 client: *client_id,
