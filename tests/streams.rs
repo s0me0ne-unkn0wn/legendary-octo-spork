@@ -1,5 +1,8 @@
+mod common;
+
 use std::io::{self, Read, Write};
 
+use common::assert_accounts;
 use legendary_octo_spork::{
     ClientId, Engine, Money, Transaction, TransactionError, TxId, TxType, process_csv,
 };
@@ -46,9 +49,9 @@ fn read_interrupts_do_not_discard_partial_transactions() {
     };
     let mut output = Vec::new();
     process_csv(input, &mut output, io::sink()).expect("failed to retry stream interrupts");
-    assert_eq!(
-        output,
-        b"client,available,held,total,locked\n1,1.0001,0.0000,1.0001,false\n"
+    assert_accounts(
+        &output,
+        b"client,available,held,total,locked\n1,1.0001,0.0000,1.0001,false\n",
     );
 }
 

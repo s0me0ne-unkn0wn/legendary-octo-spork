@@ -67,7 +67,13 @@ def measure(binary, path, output, rounds):
             process.returncode = os.waitstatus_to_exitcode(status)
         if process.returncode != 0:
             raise RuntimeError(diagnostic_path.read_text())
-        if diagnostic_path.stat().st_size != 0 or output_path.read_bytes() != output:
+        account_rows = output_path.read_bytes().splitlines()
+        expected_rows = output.splitlines()
+        if (
+            diagnostic_path.stat().st_size != 0
+            or account_rows[:1] != expected_rows[:1]
+            or sorted(account_rows[1:]) != sorted(expected_rows[1:])
+        ):
             raise RuntimeError("incorrect benchmark output")
         samples.append({
             "seconds": seconds,

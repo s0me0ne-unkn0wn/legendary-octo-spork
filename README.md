@@ -27,7 +27,7 @@ client,available,held,total,locked
 2,1.0000,0.0000,1.0000,false
 ```
 
-Output uses ascending client IDs and exactly four decimal places. Client IDs use `u16`; transaction IDs use `u32`. Both types accept zero. Deposit and withdrawal amounts require integer digits and optionally a decimal point with one to four fractional digits. The processor rejects excess precision, exponent notation, and amounts outside the numeric range. It never rounds or converts amounts through floating point.
+Output row order is unspecified. Amounts use exactly four decimal places. Client IDs use `u16`; transaction IDs use `u32`. Both types accept zero. Deposit and withdrawal amounts require integer digits and optionally a decimal point with one to four fractional digits. The processor rejects excess precision, exponent notation, and amounts outside the numeric range. It never rounds or converts amounts through floating point.
 
 | Operation | Requirements | Account changes |
 | --- | --- | --- |
@@ -78,7 +78,7 @@ The peer must finish its input, for example with `shutdown(Shutdown::Write)`, be
 
 `Money(i64)` stores minor units, so `Money(12_345)` represents `1.2345`. Parsing and balance updates use checked `i64` arithmetic. `ClientId`, `TxId`, and `Money` implement `Deref`. Transaction variants require an amount for deposits and withdrawals. Account fields have crate visibility, and the engine validates balance calculations before assigning fields. Client IDs exist as account map keys; output calculates available funds as total minus funds on hold.
 
-The processor does not collect input records. Its CSV loop reuses one byte record and borrows amount text from that record. It uses 64 KiB buffers for input, output, and diagnostics. The reader retries interrupted reads before CSV parsing. Processing takes expected linear time in the number of records, plus account sorting. Memory grows with client count, successful deposits, and the largest CSV record. The engine stores deposit amounts, owners, and dispute flags. Withdrawals create no history entries, and repeated dispute and resolve operations update the same deposit.
+The processor does not collect input records. Its CSV loop reuses one byte record and borrows amount text from that record. It uses 64 KiB buffers for input, output, and diagnostics. The reader retries interrupted reads before CSV parsing. Processing takes expected linear time in the number of records. Memory grows with client count, successful deposits, and the largest CSV record. The engine stores deposit amounts, owners, and dispute flags. Withdrawals create no history entries, and repeated dispute and resolve operations update the same deposit.
 
 Run checks and the throughput benchmark with:
 

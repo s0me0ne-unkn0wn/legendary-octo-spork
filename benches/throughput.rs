@@ -1,7 +1,11 @@
+#[path = "../tests/common/mod.rs"]
+mod common;
+
 use std::error::Error;
 use std::fmt::Write as _;
 use std::time::{Duration, Instant};
 
+use common::assert_accounts;
 use legendary_octo_spork::{Money, process_csv};
 
 const CLIENT_COUNT: u32 = 1024;
@@ -84,7 +88,7 @@ fn execute(workload: &Workload) -> Duration {
     process_csv(workload.input.as_bytes(), &mut output, &mut diagnostics)
         .expect("failed to process benchmark workload");
     let duration = start.elapsed();
-    assert_eq!(output, workload.output, "incorrect benchmark balances");
+    assert_accounts(&output, &workload.output);
     assert!(diagnostics.is_empty(), "invalid benchmark transactions");
     duration
 }

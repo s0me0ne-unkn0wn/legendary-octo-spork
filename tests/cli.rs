@@ -1,6 +1,10 @@
+mod common;
+
 use std::path::PathBuf;
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
+
+use common::assert_accounts;
 
 static NEXT_FILE: AtomicU64 = AtomicU64::new(0);
 
@@ -37,9 +41,9 @@ fn balances(input: &str, account_rows: &str, error_count: usize) {
     let output = process(input);
     let diagnostics = String::from_utf8(output.stderr).expect("invalid diagnostic encoding");
     assert!(output.status.success(), "{diagnostics}");
-    assert_eq!(
-        String::from_utf8(output.stdout).expect("invalid output encoding"),
-        format!("client,available,held,total,locked\n{account_rows}")
+    assert_accounts(
+        &output.stdout,
+        format!("client,available,held,total,locked\n{account_rows}").as_bytes(),
     );
     assert_eq!(diagnostics.lines().count(), error_count, "{diagnostics}");
 }
