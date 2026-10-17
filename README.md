@@ -51,6 +51,8 @@ The library separates transaction processing from CSV and stream access:
 | `Engine::default()` and `apply(transaction)` | Process records incrementally while preserving account and transaction state |
 | `write_clients(&clients, output)` | Serialize an account map to any `Write` output |
 
+Pipeline functions return `anyhow::Result`; transaction source errors must convert into `anyhow::Error`. Error context preserves the operation and source error. Format errors with `{error:#}` to include the complete cause chain. `MoneyError` and `TransactionError` remain separate types.
+
 For memory streams:
 
 ```rust
@@ -65,14 +67,12 @@ process_csv(input.as_slice(), &mut output, &mut diagnostics)?;
 For a blocking TCP connection:
 
 ```rust
-use std::error::Error;
 use std::net::TcpStream;
 use legendary_octo_spork::process_csv;
 
-fn process_connection(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
+fn process_connection(mut stream: TcpStream) -> anyhow::Result<()> {
     let input = stream.try_clone()?;
-    process_csv(input, &mut stream, std::io::stderr().lock())?;
-    Ok(())
+    process_csv(input, &mut stream, std::io::stderr().lock())
 }
 ```
 

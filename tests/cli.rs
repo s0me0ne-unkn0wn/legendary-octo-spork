@@ -218,6 +218,29 @@ fn malformed_csv_stops_processing_without_account_output() {
 }
 
 #[test]
+fn csv_errors_identify_the_row_and_amount_problem() {
+    for (input, line, problem) in [
+        (
+            "type,client,txid,amount\ndeposit,1,1,\n",
+            "line 2",
+            "missing amount",
+        ),
+        (
+            "type,client,txid,amount\ndeposit,1,1,1\ndeposit,1,2,0.00001\n",
+            "line: 3",
+            "amount exceeds four decimal places",
+        ),
+    ] {
+        let output = process(input);
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+        let diagnostics = String::from_utf8_lossy(&output.stderr);
+        assert!(diagnostics.contains(line), "{diagnostics}");
+        assert!(diagnostics.contains(problem), "{diagnostics}");
+    }
+}
+
+#[test]
 fn cli_requires_exactly_one_input_path() {
     let file = InputFile::new("type,client,txid,amount\n");
     for arguments in [vec![], vec![&file.path, &file.path]] {

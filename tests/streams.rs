@@ -166,7 +166,16 @@ fn output_write_and_flush_errors_do_not_report_success() {
             FaultWriter { flush_only },
             io::sink(),
         );
-        assert!(result.is_err());
+        let error = result.expect_err("output failure did not propagate");
+        assert!(error.to_string().contains("failed to write account CSV"));
+        assert_eq!(
+            error.root_cause().to_string(),
+            if flush_only {
+                "flush failure"
+            } else {
+                "write failure"
+            }
+        );
     }
 }
 
@@ -179,7 +188,16 @@ fn diagnostic_write_and_flush_errors_do_not_report_success() {
             &mut output,
             FaultWriter { flush_only },
         );
-        assert!(result.is_err());
+        let error = result.expect_err("diagnostic failure did not propagate");
+        assert!(error.to_string().contains("failed to write diagnostics"));
+        assert_eq!(
+            error.root_cause().to_string(),
+            if flush_only {
+                "flush failure"
+            } else {
+                "write failure"
+            }
+        );
         assert!(output.is_empty());
     }
 }
@@ -196,14 +214,10 @@ impl Read for FaultReader {
 fn input_failures_do_not_produce_account_output() {
     let mut output = Vec::new();
     let result = process_csv(FaultReader, &mut output, io::sink());
-    assert!(result.is_err());
     assert!(output.is_empty());
-    assert!(
-        result
-            .expect_err("input failure did not propagate")
-            .to_string()
-            .contains("read failure")
-    );
+    let error = result.expect_err("input failure did not propagate");
+    assert!(error.to_string().contains("failed to read CSV"));
+    assert_eq!(error.root_cause().to_string(), "read failure");
 }
 
 #[test]
@@ -218,7 +232,15 @@ fn iterator_failures_stop_processing() {
     ];
     let error = process_txs(transactions, io::sink())
         .expect_err("transaction source failure did not propagate");
-    assert!(error.to_string().contains("transaction source failure"));
+    assert!(error.to_string().contains("failed to read transaction"));
+    assert_eq!(
+        error
+            .downcast_ref::<io::Error>()
+            .expect("missing transaction source error")
+            .kind(),
+        io::ErrorKind::Other
+    );
+    assert_eq!(error.root_cause().to_string(), "transaction source failure");
 }
 
 #[test]

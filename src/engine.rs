@@ -1,6 +1,8 @@
 use std::collections::{HashMap, hash_map::Entry};
 use std::fmt;
-use std::io::{self, BufWriter, Write};
+use std::io::{BufWriter, Write};
+
+use anyhow::Context;
 
 use crate::{ClientId, IO_BUFFER_CAPACITY, Money, Transaction, TxId, TxType};
 
@@ -232,36 +234,13 @@ impl Engine {
     }
 }
 
-#[derive(Debug)]
-pub enum ProcessError<InputError> {
-    Input(InputError),
-    Diagnostics(io::Error),
-}
-
-impl<InputError: fmt::Display> fmt::Display for ProcessError<InputError> {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Input(error) => write!(formatter, "failed to read transaction: {error}"),
-            Self::Diagnostics(error) => write!(formatter, "failed to write diagnostics: {error}"),
-        }
-    }
-}
-
-impl<InputError: std::error::Error + 'static> std::error::Error for ProcessError<InputError> {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Input(error) => Some(error),
-            Self::Diagnostics(error) => Some(error),
-        }
-    }
-}
-
-pub fn process_txs<Input, InputError, Diagnostics>(
+pub fn process_txs<Input, SourceError, Diagnostics>(
     transactions: Input,
     diagnostics: Diagnostics,
-) -> Result<HashMap<ClientId, ClientInfo>, ProcessError<InputError>>
+) -> anyhow::Result<HashMap<ClientId, ClientInfo>>
 where
-    Input: IntoIterator<Item = Result<Transaction, InputError>>,
+    Input: IntoIterator<Item = Result<Transaction, SourceError>>,
+    SourceError: Into<anyhow::Error>,
     Diagnostics: Write,
 {
     let mut engine = Engine::default();
@@ -270,8 +249,9 @@ where
         let transaction = match transaction {
             Ok(transaction) => transaction,
             Err(error) => {
-                diagnostics.flush().map_err(ProcessError::Diagnostics)?;
-                return Err(ProcessError::Input(error));
+                diagnostics.flush().context("failed to write diagnostics")?;
+                let error: anyhow::Error = error.into();
+                return Err(error.context("failed to read transaction"));
             }
         };
         if let Err(error) = engine.apply(transaction) {
@@ -280,9 +260,9 @@ where
                 "client {}, transaction {}: {error}",
                 *transaction.client_id, *transaction.id
             )
-            .map_err(ProcessError::Diagnostics)?;
+            .context("failed to write diagnostics")?;
         }
     }
-    diagnostics.flush().map_err(ProcessError::Diagnostics)?;
+    diagnostics.flush().context("failed to write diagnostics")?;
     Ok(engine.into_clients())
 }
