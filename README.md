@@ -46,7 +46,6 @@ The library separates transaction processing from CSV and stream access:
 | API | Use |
 | --- | --- |
 | `process_csv(input, output, diagnostics)` | CSV pipeline over any `Read` input and `Write` outputs, using `i64` amounts |
-| `CsvTransactions::new(input)` | Fallible transaction iterator over any `Read` input; reuse one CSV byte record |
 | `process_txs(transactions, diagnostics)` | Consume any iterator of `Result<Transaction, Error>` and return the account map |
 | `Engine::default()` and `apply(transaction)` | Process records incrementally while preserving account and transaction state |
 | `write_clients(&clients, output)` | Serialize an account map to any `Write` output |
@@ -80,7 +79,7 @@ The peer must finish its input, for example with `shutdown(Shutdown::Write)`, be
 
 `Money(i64)` stores minor units, so `Money(12_345)` represents `1.2345`. Parsing and balance updates use checked `i64` arithmetic. `ClientId`, `TxId`, and `Money` implement `Deref`. Transaction variants require an amount for deposits and withdrawals, and account fields remain private so callers cannot bypass balance checks.
 
-The processor does not collect input records. It reuses CSV record storage and uses 64 KiB buffers for input, output, and diagnostics. The reader retries interrupted reads before CSV parsing. Processing takes expected linear time in the number of records, plus account sorting. Memory grows with client count, successful deposits, and the largest CSV record. The engine stores deposit amounts, owners, and dispute flags. Withdrawals create no history entries, and repeated dispute and resolve operations update the same deposit.
+The processor does not collect input records. Its CSV loop reuses one byte record and borrows amount text from that record. It uses 64 KiB buffers for input, output, and diagnostics. The reader retries interrupted reads before CSV parsing. Processing takes expected linear time in the number of records, plus account sorting. Memory grows with client count, successful deposits, and the largest CSV record. The engine stores deposit amounts, owners, and dispute flags. Withdrawals create no history entries, and repeated dispute and resolve operations update the same deposit.
 
 Run checks and the throughput benchmark with:
 
@@ -98,8 +97,8 @@ On 2026-10-17, Rust 1.94.1 on an Intel Core i9-13900K in this Linux container pr
 
 | In-memory CSV workload | Records | Median time | Records/second | Input MiB/second |
 | --- | ---: | ---: | ---: | ---: |
-| Unique deposits, 1,024 clients | 1,000,000 | 0.204 s | 4.90 million | 120.49 |
-| Deposits, withdrawals, disputes, resolves, and chargebacks | 1,002,048 | 0.160 s | 6.26 million | 136.84 |
+| Unique deposits, 1,024 clients | 1,000,000 | 0.198 s | 5.05 million | 124.20 |
+| Deposits, withdrawals, disputes, resolves, and chargebacks | 1,002,048 | 0.146 s | 6.85 million | 149.81 |
 
 Separate CLI measurements use files with one million and four million rows, with three runs per input and complete output validation. Linux `VmHWM` samples track peak process memory after startup:
 

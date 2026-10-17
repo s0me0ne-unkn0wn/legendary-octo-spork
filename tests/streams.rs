@@ -4,8 +4,8 @@ use std::net::{Shutdown, TcpListener, TcpStream};
 use std::time::Duration;
 
 use legendary_octo_spork::{
-    ClientId, CsvTransactions, Engine, Money, Transaction, TransactionError, TxId, TxType,
-    process_csv, process_txs, write_clients,
+    ClientId, Engine, Money, Transaction, TransactionError, TxId, TxType, process_csv, process_txs,
+    write_clients,
 };
 
 #[test]
@@ -49,20 +49,21 @@ fn transaction_iterators_accept_records_without_csv() {
 }
 
 #[test]
-fn incremental_processing_preserves_state_between_inputs() {
+fn incremental_processing_preserves_dispute_state() {
     let mut engine = Engine::default();
-    for input in [
-        "type,client,tx,amount\ndeposit,1,1,2\n",
-        "type,client,tx,amount\ndispute,1,1,\n",
-        "type,client,tx,amount\nresolve,1,1,\nwithdrawal,1,2,1\n",
+    for (id, ty) in [
+        (1, TxType::Deposit(Money(20_000))),
+        (1, TxType::Dispute),
+        (1, TxType::Resolve),
+        (2, TxType::Withdrawal(Money(10_000))),
     ] {
-        for transaction in
-            CsvTransactions::new(input.as_bytes()).expect("failed to create transaction source")
-        {
-            engine
-                .apply(transaction.expect("failed to read transaction"))
-                .expect("failed to apply transaction");
-        }
+        engine
+            .apply(Transaction {
+                client_id: ClientId(1),
+                id: TxId(id),
+                ty,
+            })
+            .expect("failed to apply transaction");
     }
     assert_eq!(engine.clients()[&ClientId(1)].available(), Money(10_000));
 }
@@ -198,24 +199,25 @@ fn output_write_and_flush_errors_do_not_report_success() {
 
 #[test]
 fn diagnostic_write_and_flush_errors_do_not_report_success() {
-    for flush_only in [false, true] {
-        let mut output = Vec::new();
-        let result = process_csv(
-            b"type,client,tx,amount\ndispute,1,1,\n".as_slice(),
-            &mut output,
-            FaultWriter { flush_only },
-        );
-        let error = result.expect_err("diagnostic failure did not propagate");
-        assert!(error.to_string().contains("failed to write diagnostics"));
-        assert_eq!(
-            error.root_cause().to_string(),
-            if flush_only {
-                "flush failure"
-            } else {
-                "write failure"
-            }
-        );
-        assert!(output.is_empty());
+    for input in [
+        "type,client,tx,amount\ndispute,1,1\n",
+        "type,client,tx,amount\ndispute,1,1\ndeposit,1,2,0.00001\n",
+    ] {
+        for flush_only in [false, true] {
+            let mut output = Vec::new();
+            let result = process_csv(input.as_bytes(), &mut output, FaultWriter { flush_only });
+            let error = result.expect_err("diagnostic failure did not propagate");
+            assert!(error.to_string().contains("failed to write diagnostics"));
+            assert_eq!(
+                error.root_cause().to_string(),
+                if flush_only {
+                    "flush failure"
+                } else {
+                    "write failure"
+                }
+            );
+            assert!(output.is_empty());
+        }
     }
 }
 
@@ -310,13 +312,21 @@ fn input_failure_after_a_valid_transaction_stops_account_output() {
 }
 
 #[test]
-fn csv_iteration_stops_after_a_record_error() {
-    let input = b"type,client,tx,amount\ndeposit,1,1,0.00001\ndeposit,1,2,1\n";
-    let mut transactions =
-        CsvTransactions::new(input.as_slice()).expect("failed to create CSV source");
-    assert!(transactions.next().expect("missing error record").is_err());
-    assert!(transactions.next().is_none());
-    assert!(transactions.next().is_none());
+fn csv_errors_preserve_prior_diagnostics_and_stop_processing() {
+    let input = b"type,client,tx,amount\nwithdrawal,1,1,1\ndeposit,1,2,0.00001\nwithdrawal,2,3,1\n";
+    let mut output = Vec::new();
+    let mut diagnostics = Vec::new();
+    let error = process_csv(input.as_slice(), &mut output, &mut diagnostics)
+        .expect_err("invalid CSV did not stop processing");
+    assert!(output.is_empty());
+    assert_eq!(
+        diagnostics,
+        b"client 1, transaction 1: insufficient available funds\n"
+    );
+    assert_eq!(
+        error.root_cause().to_string(),
+        "amount exceeds four decimal places"
+    );
 }
 
 #[test]

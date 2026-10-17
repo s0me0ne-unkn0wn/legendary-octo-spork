@@ -6,7 +6,8 @@
 - Use git -c safe.directory=/home/claude/legendary-octo-spork for repository commands if ownership checks require it.
 - No Git user identity exists in repository or global config. Use per-command author settings for commits if necessary.
 - The requested work implements src/main.rs transaction processing and generic streams, including throughput verification.
-- The public library exports process_csv, CsvTransactions, process_txs, Engine, and write_clients. Input and output use standard blocking Read and Write traits.
+- The public library exports process_csv, process_txs, Engine, and write_clients. Input and output use standard blocking Read and Write traits.
+- process_csv uses a direct read_byte_record loop with one reusable byte record and borrowed amount text. The user requested removal of the CsvTransactions wrapper. Flush diagnostics before propagating CSV errors and before account output.
 - CSV input uses type,client,tx,amount. The transaction column is tx.
 - Control records use the deposit ID and full deposit amount. They can omit a trailing amount field; the parser ignores any control amount.
 - Only deposits create accounts and history entries. Withdrawals on missing accounts return InsufficientFunds. The engine assumes unique deposit IDs and performs no duplicate ID validation.

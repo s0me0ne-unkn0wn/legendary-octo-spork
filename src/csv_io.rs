@@ -1,13 +1,10 @@
 use std::collections::HashMap;
-use std::io::{self, Read, Write};
-use std::iter::FusedIterator;
+use std::io::{self, BufWriter, Read, Write};
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    ClientId, ClientInfo, IO_BUFFER_CAPACITY, Money, Transaction, TxId, TxType, process_txs,
-};
+use crate::{ClientId, ClientInfo, Engine, IO_BUFFER_CAPACITY, Money, Transaction, TxId, TxType};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -42,92 +39,66 @@ impl<Input: Read> Read for RetryReader<Input> {
     }
 }
 
-pub struct CsvTransactions<Input> {
-    reader: csv::Reader<RetryReader<Input>>,
-    headers: csv::ByteRecord,
-    record: csv::ByteRecord,
-    stop: bool,
-}
-
-impl<Input: Read> CsvTransactions<Input> {
-    pub fn new(input: Input) -> Result<Self> {
-        let mut reader = csv::ReaderBuilder::new()
-            .trim(csv::Trim::All)
-            .flexible(true)
-            .buffer_capacity(IO_BUFFER_CAPACITY)
-            .from_reader(RetryReader(input));
-        let headers = reader.byte_headers().context("failed to read CSV")?.clone();
-        let columns: [&[u8]; 4] = [b"type", b"client", b"tx", b"amount"];
-        if headers.len() != columns.len()
-            || columns
-                .iter()
-                .any(|column| headers.iter().filter(|header| header == column).count() != 1)
-        {
-            bail!("invalid CSV header: require type,client,tx,amount exactly once in any order");
-        }
-        Ok(Self {
-            reader,
-            headers,
-            record: csv::ByteRecord::with_capacity(128, 4),
-            stop: false,
-        })
+fn read_clients<Input: Read>(
+    input: Input,
+    diagnostics: &mut impl Write,
+) -> Result<HashMap<ClientId, ClientInfo>> {
+    let mut reader = csv::ReaderBuilder::new()
+        .trim(csv::Trim::All)
+        .flexible(true)
+        .buffer_capacity(IO_BUFFER_CAPACITY)
+        .from_reader(RetryReader(input));
+    let headers = reader.byte_headers().context("failed to read CSV")?.clone();
+    let columns: [&[u8]; 4] = [b"type", b"client", b"tx", b"amount"];
+    if headers.len() != columns.len()
+        || columns
+            .iter()
+            .any(|column| headers.iter().filter(|header| header == column).count() != 1)
+    {
+        bail!("invalid CSV header: require type,client,tx,amount exactly once in any order");
     }
-
-    fn read_transaction(&mut self) -> Result<Option<Transaction>> {
-        if !self.reader.read_byte_record(&mut self.record)? {
-            return Ok(None);
+    let mut engine = Engine::default();
+    let mut record = csv::ByteRecord::with_capacity(128, 4);
+    while reader
+        .read_byte_record(&mut record)
+        .context("failed to read CSV")?
+    {
+        let line = record.position().map_or(0, csv::Position::line);
+        if record.len() > headers.len() {
+            bail!("too many fields at CSV line {line}");
         }
-        if self.record.len() > self.headers.len() {
-            bail!(
-                "too many fields at CSV line {}",
-                self.record.position().map_or(0, csv::Position::line)
-            );
-        }
-        let record: CsvTransaction<'_> = self.record.deserialize(Some(&self.headers))?;
+        let row: CsvTransaction<'_> = record
+            .deserialize(Some(&headers))
+            .context("failed to read CSV")?;
         let amount = || {
-            let line = self.record.position().map_or(0, csv::Position::line);
-            record.amount
+            row.amount
                 .with_context(|| format!("missing amount at CSV line {line}: deposits and withdrawals require an amount"))?
                 .parse::<Money>()
                 .with_context(|| format!("invalid amount at CSV line {line}"))
         };
-        let ty = match record.ty {
+        let ty = match row.ty {
             CsvTxType::Deposit => TxType::Deposit(amount()?),
             CsvTxType::Withdrawal => TxType::Withdrawal(amount()?),
             CsvTxType::Dispute => TxType::Dispute,
             CsvTxType::Resolve => TxType::Resolve,
             CsvTxType::Chargeback => TxType::Chargeback,
         };
-        Ok(Some(Transaction {
+        let transaction = Transaction {
             ty,
-            client_id: record.client,
-            id: record.tx,
-        }))
-    }
-}
-
-impl<Input: Read> Iterator for CsvTransactions<Input> {
-    type Item = Result<Transaction>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.stop {
-            return None;
-        }
-        match self.read_transaction().context("failed to read CSV") {
-            Ok(Some(transaction)) => Some(Ok(transaction)),
-            Ok(None) => {
-                self.stop = true;
-                None
-            }
-            Err(error) => {
-                self.stop = true;
-                Some(Err(error))
-            }
+            client_id: row.client,
+            id: row.tx,
+        };
+        if let Err(error) = engine.apply(transaction) {
+            writeln!(
+                diagnostics,
+                "client {}, transaction {}: {error}",
+                *transaction.client_id, *transaction.id
+            )
+            .context("failed to write diagnostics")?;
         }
     }
+    Ok(engine.into_clients())
 }
-
-impl<Input: Read> FusedIterator for CsvTransactions<Input> {}
 
 #[derive(Serialize)]
 struct CsvClient {
@@ -172,7 +143,9 @@ pub fn process_csv<Input: Read, Output: Write, Diagnostics: Write>(
     output: Output,
     diagnostics: Diagnostics,
 ) -> Result<()> {
-    let transactions = CsvTransactions::new(input)?;
-    let clients = process_txs(transactions, diagnostics)?;
+    let mut diagnostics = BufWriter::with_capacity(IO_BUFFER_CAPACITY, diagnostics);
+    let clients = read_clients(input, &mut diagnostics);
+    diagnostics.flush().context("failed to write diagnostics")?;
+    let clients = clients?;
     write_clients(&clients, output)
 }
