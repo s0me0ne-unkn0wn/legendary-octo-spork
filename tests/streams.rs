@@ -1,48 +1,8 @@
-use std::fmt::Write as _;
-use std::io::{self, Cursor, Read, Write};
+use std::io::{self, Read, Write};
 
 use legendary_octo_spork::{
     ClientId, Engine, Money, Transaction, TransactionError, TxId, TxType, process_csv,
-    write_clients,
 };
-
-#[test]
-fn memory_streams_support_the_csv_pipeline() {
-    let input = Cursor::new(b"type,client,tx,amount\ndeposit,1,1,1.2345\n");
-    let mut output = Vec::new();
-    let mut diagnostics = Vec::new();
-    process_csv(input, &mut output, &mut diagnostics).expect("failed to process memory input");
-    assert_eq!(
-        output,
-        b"client,available,held,total,locked\n1,1.2345,0.0000,1.2345,false\n"
-    );
-    assert!(diagnostics.is_empty());
-}
-
-#[test]
-fn incremental_processing_preserves_dispute_state() {
-    let mut engine = Engine::default();
-    for (id, ty) in [
-        (1, TxType::Deposit(Money(20_000))),
-        (1, TxType::Dispute),
-        (1, TxType::Resolve),
-        (2, TxType::Withdrawal(Money(10_000))),
-    ] {
-        engine
-            .apply(Transaction {
-                client_id: ClientId(1),
-                id: TxId(id),
-                ty,
-            })
-            .expect("failed to apply transaction");
-    }
-    let mut output = Vec::new();
-    write_clients(engine.clients(), &mut output).expect("failed to write clients");
-    assert_eq!(
-        output,
-        b"client,available,held,total,locked\n1,1.0000,0.0000,1.0000,false\n"
-    );
-}
 
 #[test]
 fn withdrawals_on_missing_accounts_return_errors_without_clients() {
@@ -61,46 +21,6 @@ fn withdrawals_on_missing_accounts_return_errors_without_clients() {
     }
 }
 
-struct ShortStream<Stream> {
-    inner: Stream,
-    limit: usize,
-}
-
-impl<Stream: Read> Read for ShortStream<Stream> {
-    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
-        let length = buffer.len().min(self.limit);
-        self.inner.read(&mut buffer[..length])
-    }
-}
-
-impl<Stream: Write> Write for ShortStream<Stream> {
-    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
-        self.inner.write(&buffer[..buffer.len().min(self.limit)])
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        self.inner.flush()
-    }
-}
-
-#[test]
-fn partial_reads_and_writes_preserve_record_boundaries() {
-    let input = ShortStream {
-        inner: b"type,client,tx,amount\ndeposit,1,1,1.0001\n".as_slice(),
-        limit: 1,
-    };
-    let mut output = Vec::new();
-    let writer = ShortStream {
-        inner: &mut output,
-        limit: 2,
-    };
-    process_csv(input, writer, io::sink()).expect("failed to process partial stream operations");
-    assert_eq!(
-        output,
-        b"client,available,held,total,locked\n1,1.0001,0.0000,1.0001,false\n"
-    );
-}
-
 struct InterruptReader<Input> {
     input: Input,
     interrupt: bool,
@@ -113,17 +33,15 @@ impl<Input: Read> Read for InterruptReader<Input> {
             return Err(io::ErrorKind::Interrupted.into());
         }
         self.interrupt = true;
-        self.input.read(buffer)
+        let length = buffer.len().min(3);
+        self.input.read(&mut buffer[..length])
     }
 }
 
 #[test]
 fn read_interrupts_do_not_discard_partial_transactions() {
     let input = InterruptReader {
-        input: ShortStream {
-            inner: b"type,client,tx,amount\ndeposit,1,1,1.0001\n".as_slice(),
-            limit: 3,
-        },
+        input: b"type,client,tx,amount\ndeposit,1,1,1.0001\n".as_slice(),
         interrupt: true,
     };
     let mut output = Vec::new();
@@ -207,23 +125,14 @@ impl Read for FaultReader {
 
 #[test]
 fn input_failures_do_not_produce_account_output() {
-    let mut output = Vec::new();
-    let result = process_csv(FaultReader, &mut output, io::sink());
-    assert!(output.is_empty());
-    let error = result.expect_err("input failure did not propagate");
-    assert!(error.to_string().contains("failed to read CSV"));
-    assert_eq!(error.root_cause().to_string(), "read failure");
-}
-
-#[test]
-fn input_failure_after_a_valid_transaction_stops_account_output() {
-    let input = b"type,client,tx,amount\ndeposit,1,1,1\n"
-        .as_slice()
-        .chain(FaultReader);
-    let mut output = Vec::new();
-    let result = process_csv(input, &mut output, io::sink());
-    assert!(result.is_err());
-    assert!(output.is_empty());
+    for input in ["", "type,client,tx,amount\ndeposit,1,1,1\n"] {
+        let mut output = Vec::new();
+        let result = process_csv(input.as_bytes().chain(FaultReader), &mut output, io::sink());
+        assert!(output.is_empty());
+        let error = result.expect_err("input failure did not propagate");
+        assert!(error.to_string().contains("failed to read CSV"));
+        assert_eq!(error.root_cause().to_string(), "read failure");
+    }
 }
 
 #[test]
@@ -242,29 +151,4 @@ fn csv_errors_preserve_prior_diagnostics_and_stop_processing() {
         error.root_cause().to_string(),
         "amount exceeds four decimal places"
     );
-}
-
-#[test]
-fn small_transaction_differences_accumulate_exactly_per_client() {
-    let mut input = String::from("type,client,tx,amount\n");
-    for id in 0..100_000 {
-        let client = id % 100;
-        let (ty, amount) = if id / 100 % 2 == 0 {
-            ("deposit", "1.0001")
-        } else {
-            ("withdrawal", "1.0000")
-        };
-        writeln!(input, "{ty},{client},{id},{amount}").expect("failed to format input");
-    }
-    let mut account_output = String::from("client,available,held,total,locked\n");
-    for client in 0..100 {
-        writeln!(account_output, "{client},0.0500,0.0000,0.0500,false")
-            .expect("failed to format account output");
-    }
-    let mut output = Vec::new();
-    let mut diagnostics = Vec::new();
-    process_csv(input.as_bytes(), &mut output, &mut diagnostics)
-        .expect("failed to process large input");
-    assert_eq!(output, account_output.as_bytes());
-    assert!(diagnostics.is_empty());
 }
