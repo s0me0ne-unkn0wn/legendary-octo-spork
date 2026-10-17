@@ -4,7 +4,10 @@ use std::io::{self, BufWriter, Read, Write};
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
-use crate::{ClientId, ClientInfo, Engine, IO_BUFFER_CAPACITY, Money, RECORD_BUFFER_SIZE, RECORD_MAX_FIELDS, Transaction, TxId, TxType};
+use crate::{
+    ClientId, ClientInfo, Engine, IO_BUFFER_CAPACITY, Money, RECORD_BUFFER_SIZE, RECORD_MAX_FIELDS,
+    Transaction, TxId, TxType,
+};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -26,9 +29,9 @@ struct CsvTransaction<'record> {
     amount: Option<&'record str>,
 }
 
-struct RetryReader<Input>(Input);
+struct RetryReader<I>(I);
 
-impl<Input: Read> Read for RetryReader<Input> {
+impl<I: Read> Read for RetryReader<I> {
     fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
         loop {
             match self.0.read(buffer) {
@@ -39,8 +42,8 @@ impl<Input: Read> Read for RetryReader<Input> {
     }
 }
 
-fn read_clients<Input: Read>(
-    input: Input,
+fn read_clients(
+    input: impl Read,
     diagnostics: &mut impl Write,
 ) -> Result<HashMap<ClientId, ClientInfo>> {
     let mut reader = csv::ReaderBuilder::new()
@@ -111,10 +114,7 @@ struct CsvClient {
     lock: bool,
 }
 
-pub fn write_clients<Output: Write>(
-    clients: &HashMap<ClientId, ClientInfo>,
-    output: Output,
-) -> Result<()> {
+pub fn write_clients(clients: &HashMap<ClientId, ClientInfo>, output: impl Write) -> Result<()> {
     let mut writer = csv::WriterBuilder::new()
         .has_headers(false)
         .buffer_capacity(IO_BUFFER_CAPACITY)
@@ -138,11 +138,7 @@ pub fn write_clients<Output: Write>(
     writer.flush().context("failed to write account CSV")
 }
 
-pub fn process_csv<Input: Read, Output: Write, Diagnostics: Write>(
-    input: Input,
-    output: Output,
-    diagnostics: Diagnostics,
-) -> Result<()> {
+pub fn process_csv(input: impl Read, output: impl Write, diagnostics: impl Write) -> Result<()> {
     let mut diagnostics = BufWriter::with_capacity(IO_BUFFER_CAPACITY, diagnostics);
     let clients = read_clients(input, &mut diagnostics);
     diagnostics.flush().context("failed to write diagnostics")?;
