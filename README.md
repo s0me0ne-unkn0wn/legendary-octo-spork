@@ -46,11 +46,10 @@ The library separates transaction processing from CSV and stream access:
 | API | Use |
 | --- | --- |
 | `process_csv(input, output, diagnostics)` | CSV pipeline over any `Read` input and `Write` outputs, using `i64` amounts |
-| `process_txs(transactions, diagnostics)` | Consume any iterator of `Result<Transaction, Error>` and return the account map |
 | `Engine::default()` and `apply(transaction)` | Process records incrementally while preserving account and transaction state |
 | `write_clients(&clients, output)` | Serialize an account map to any `Write` output |
 
-Pipeline functions return `anyhow::Result`; transaction source errors must convert into `anyhow::Error`. Error context preserves the operation and source error. Format errors with `{error:#}` to include the complete cause chain. `MoneyError` and `TransactionError` remain separate types.
+Pipeline functions return `anyhow::Result`. Error context preserves the operation and source error. Format errors with `{error:#}` to include the complete cause chain. `MoneyError` and `TransactionError` remain separate types.
 
 For memory streams:
 

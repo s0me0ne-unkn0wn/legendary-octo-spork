@@ -1,9 +1,8 @@
-use std::convert::Infallible;
+use std::fmt::Write as _;
 use std::io::{self, Cursor, Read, Write};
 
 use legendary_octo_spork::{
-    ClientId, Engine, Money, Transaction, TransactionError, TxId, TxType, process_csv, process_txs,
-    write_clients,
+    ClientId, Engine, Money, Transaction, TransactionError, TxId, TxType, process_csv,
 };
 
 #[test]
@@ -17,33 +16,6 @@ fn memory_streams_support_the_csv_pipeline() {
         b"client,available,held,total,locked\n1,1.2345,0.0000,1.2345,false\n"
     );
     assert!(diagnostics.is_empty());
-}
-
-#[test]
-fn transaction_iterators_accept_records_without_csv() {
-    let transactions = [
-        Transaction {
-            client_id: ClientId(7),
-            id: TxId(8),
-            ty: TxType::Deposit(Money(12_345)),
-        },
-        Transaction {
-            client_id: ClientId(7),
-            id: TxId(9),
-            ty: TxType::Withdrawal(Money(1)),
-        },
-    ];
-    let clients = process_txs(
-        transactions.into_iter().map(Ok::<_, Infallible>),
-        io::sink(),
-    )
-    .expect("failed to process transaction iterator");
-    let mut output = Vec::new();
-    write_clients(&clients, &mut output).expect("failed to write clients");
-    assert_eq!(
-        output,
-        b"client,available,held,total,locked\n7,1.2344,0.0000,1.2344,false\n"
-    );
 }
 
 #[test]
@@ -238,29 +210,6 @@ fn input_failures_do_not_produce_account_output() {
 }
 
 #[test]
-fn iterator_failures_stop_processing() {
-    let transactions = [
-        Ok(Transaction {
-            client_id: ClientId(1),
-            id: TxId(1),
-            ty: TxType::Deposit(Money(10_000_i64)),
-        }),
-        Err(io::Error::other("transaction source failure")),
-    ];
-    let error = process_txs(transactions, io::sink())
-        .expect_err("transaction source failure did not propagate");
-    assert!(error.to_string().contains("failed to read transaction"));
-    assert_eq!(
-        error
-            .downcast_ref::<io::Error>()
-            .expect("missing transaction source error")
-            .kind(),
-        io::ErrorKind::Other
-    );
-    assert_eq!(error.root_cause().to_string(), "transaction source failure");
-}
-
-#[test]
 fn input_failure_after_a_valid_transaction_stops_account_output() {
     let input = b"type,client,tx,amount\ndeposit,1,1,1\n"
         .as_slice()
@@ -291,22 +240,25 @@ fn csv_errors_preserve_prior_diagnostics_and_stop_processing() {
 
 #[test]
 fn small_transaction_differences_accumulate_exactly_per_client() {
-    let transactions = (0..100_000).map(|id| {
-        Ok::<_, Infallible>(Transaction {
-            client_id: ClientId((id % 100) as u16),
-            id: TxId(id),
-            ty: if id / 100 % 2 == 0 {
-                TxType::Deposit(Money(10_001_i64))
-            } else {
-                TxType::Withdrawal(Money(10_000_i64))
-            },
-        })
-    });
-    let clients = process_txs(transactions, io::sink()).expect("failed to process large input");
-    assert_eq!(clients.len(), 100);
-    for client in clients.values() {
-        assert_eq!(client.available(), Money(500));
-        assert_eq!(client.on_hold(), Money(0));
-        assert!(!client.lock());
+    let mut input = String::from("type,client,tx,amount\n");
+    for id in 0..100_000 {
+        let client = id % 100;
+        let (ty, amount) = if id / 100 % 2 == 0 {
+            ("deposit", "1.0001")
+        } else {
+            ("withdrawal", "1.0000")
+        };
+        writeln!(input, "{ty},{client},{id},{amount}").expect("failed to format input");
     }
+    let mut account_output = String::from("client,available,held,total,locked\n");
+    for client in 0..100 {
+        writeln!(account_output, "{client},0.0500,0.0000,0.0500,false")
+            .expect("failed to format account output");
+    }
+    let mut output = Vec::new();
+    let mut diagnostics = Vec::new();
+    process_csv(input.as_bytes(), &mut output, &mut diagnostics)
+        .expect("failed to process large input");
+    assert_eq!(output, account_output.as_bytes());
+    assert!(diagnostics.is_empty());
 }

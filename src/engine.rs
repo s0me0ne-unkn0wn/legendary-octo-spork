@@ -1,10 +1,7 @@
 use std::collections::HashMap;
 use std::fmt;
-use std::io::{BufWriter, Write};
 
-use anyhow::Context;
-
-use crate::{ClientId, IO_BUFFER_CAPACITY, Money, Transaction, TxId, TxType};
+use crate::{ClientId, Money, Transaction, TxId, TxType};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientInfo {
@@ -220,37 +217,4 @@ impl Engine {
         deposit.dispute = dispute;
         Ok(())
     }
-}
-
-pub fn process_txs<Input, SourceError, Diagnostics>(
-    transactions: Input,
-    diagnostics: Diagnostics,
-) -> anyhow::Result<HashMap<ClientId, ClientInfo>>
-where
-    Input: IntoIterator<Item = Result<Transaction, SourceError>>,
-    SourceError: Into<anyhow::Error>,
-    Diagnostics: Write,
-{
-    let mut engine = Engine::default();
-    let mut diagnostics = BufWriter::with_capacity(IO_BUFFER_CAPACITY, diagnostics);
-    for transaction in transactions {
-        let transaction = match transaction {
-            Ok(transaction) => transaction,
-            Err(error) => {
-                diagnostics.flush().context("failed to write diagnostics")?;
-                let error: anyhow::Error = error.into();
-                return Err(error.context("failed to read transaction"));
-            }
-        };
-        if let Err(error) = engine.apply(transaction) {
-            writeln!(
-                diagnostics,
-                "client {}, transaction {}: {error}",
-                *transaction.client_id, *transaction.id
-            )
-            .context("failed to write diagnostics")?;
-        }
-    }
-    diagnostics.flush().context("failed to write diagnostics")?;
-    Ok(engine.into_clients())
 }

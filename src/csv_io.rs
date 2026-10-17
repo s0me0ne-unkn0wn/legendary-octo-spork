@@ -42,7 +42,7 @@ impl<I: Read> Read for RetryReader<I> {
     }
 }
 
-fn read_clients(
+fn process_txs(
     input: impl Read,
     diagnostics: &mut impl Write,
 ) -> Result<HashMap<ClientId, ClientInfo>> {
@@ -140,7 +140,7 @@ pub fn write_clients(clients: &HashMap<ClientId, ClientInfo>, output: impl Write
 
 pub fn process_csv(input: impl Read, output: impl Write, diagnostics: impl Write) -> Result<()> {
     let mut diagnostics = BufWriter::with_capacity(IO_BUFFER_CAPACITY, diagnostics);
-    let clients = read_clients(input, &mut diagnostics);
+    let clients = process_txs(input, &mut diagnostics);
     diagnostics.flush().context("failed to write diagnostics")?;
     let clients = clients?;
     write_clients(&clients, output)
