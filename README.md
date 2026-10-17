@@ -1,6 +1,6 @@
 # legendary-octo-spork
 
-Process account transactions from CSV with exact integer arithmetic and four decimal places.
+Process account transactions from a CSV file with exact integer arithmetic and four decimal places. The CLI supports file processing; network connections are a possible future use of the library API.
 
 ```sh
 cargo run --release -- input.csv > accounts.csv
@@ -63,7 +63,7 @@ let mut diagnostics = Vec::new();
 process_csv(input.as_slice(), &mut output, &mut diagnostics)?;
 ```
 
-For a blocking TCP connection:
+For possible future use with a blocking TCP connection:
 
 ```rust
 use std::net::TcpStream;
@@ -75,7 +75,7 @@ fn process_connection(mut stream: TcpStream) -> anyhow::Result<()> {
 }
 ```
 
-The peer must finish its input, for example with `shutdown(Shutdown::Write)`, before reading the account response. The integration suite checks this exchange over a real loopback TCP connection. For connections without an end of input, feed records to `Engine::apply` and use `write_clients` when the application requires a snapshot. These APIs use blocking I/O.
+The peer must finish its input, for example with `shutdown(Shutdown::Write)`, before reading the account response. These APIs use blocking I/O.
 
 `Money(i64)` stores minor units, so `Money(12_345)` represents `1.2345`. Parsing and balance updates use checked `i64` arithmetic. `ClientId`, `TxId`, and `Money` implement `Deref`. Transaction variants require an amount for deposits and withdrawals, and account fields remain private so callers cannot bypass balance checks.
 

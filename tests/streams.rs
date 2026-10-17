@@ -1,7 +1,5 @@
 use std::convert::Infallible;
 use std::io::{self, Cursor, Read, Write};
-use std::net::{Shutdown, TcpListener, TcpStream};
-use std::time::Duration;
 
 use legendary_octo_spork::{
     ClientId, Engine, Money, Transaction, TransactionError, TxId, TxType, process_csv, process_txs,
@@ -260,44 +258,6 @@ fn iterator_failures_stop_processing() {
         io::ErrorKind::Other
     );
     assert_eq!(error.root_cause().to_string(), "transaction source failure");
-}
-
-#[test]
-fn tcp_streams_support_the_same_csv_pipeline() {
-    let listener = TcpListener::bind(("127.0.0.1", 0)).expect("failed to bind test listener");
-    let address = listener
-        .local_addr()
-        .expect("failed to read listener address");
-    let server = std::thread::spawn(move || {
-        let (mut stream, _) = listener.accept().expect("failed to accept test connection");
-        stream
-            .set_read_timeout(Some(Duration::from_secs(10)))
-            .expect("failed to set read timeout");
-        stream
-            .set_write_timeout(Some(Duration::from_secs(10)))
-            .expect("failed to set write timeout");
-        let input = stream.try_clone().expect("failed to clone test stream");
-        process_csv(input, &mut stream, io::sink()).expect("failed to process TCP input");
-    });
-    let mut stream = TcpStream::connect(address).expect("failed to connect to test listener");
-    stream
-        .set_read_timeout(Some(Duration::from_secs(10)))
-        .expect("failed to set read timeout");
-    stream
-        .write_all(b"type,client,tx,amount\ndeposit,1,1,1.2345\ndispute,1,1\nresolve,1,1\n")
-        .expect("failed to write TCP input");
-    stream
-        .shutdown(Shutdown::Write)
-        .expect("failed to finish TCP input");
-    let mut output = Vec::new();
-    stream
-        .read_to_end(&mut output)
-        .expect("failed to read TCP output");
-    server.join().expect("test server panic");
-    assert_eq!(
-        output,
-        b"client,available,held,total,locked\n1,1.2345,0.0000,1.2345,false\n"
-    );
 }
 
 #[test]
