@@ -9,7 +9,7 @@ Definition of Done: correct account output for valid and invalid transaction seq
 The user approved the Definition of Done.
 
 Known facts:
-- The scaffold uses type,client,txid,amount as CSV input and client,available,held,total,locked as output.
+- Current CSV input uses type,client,tx,amount and output uses client,available,held,total,locked.
 - Money requires four decimal places and integer arithmetic.
 - Only deposits support disputes. Resolve and chargeback require an active dispute.
 - The repository starts with a non-compiling main.rs and no tests.

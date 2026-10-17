@@ -8,10 +8,10 @@ cargo run --release -- input.csv > accounts.csv
 
 The CLI accepts exactly one file path. It writes account CSV to stdout and transaction errors to stderr. Invalid CSV or an I/O failure produces a nonzero exit status. The processor reads the complete input before it writes account output.
 
-Input requires the columns `type,client,txid,amount` exactly once, in any order. The parser trims surrounding whitespace. Every row must contain four fields; control records can leave `amount` empty.
+Input requires the columns `type,client,tx,amount` exactly once, in any order. The parser trims surrounding whitespace. Every row must contain four fields; control records can leave `amount` empty.
 
 ```csv
-type,client,txid,amount
+type,client,tx,amount
 deposit,1,1,2.0001
 withdrawal,1,2,0.5000
 dispute,1,1,
@@ -58,7 +58,7 @@ For memory streams:
 ```rust
 use legendary_octo_spork::process_csv;
 
-let input = b"type,client,txid,amount\ndeposit,1,1,1.2345\n";
+let input = b"type,client,tx,amount\ndeposit,1,1,1.2345\n";
 let mut output = Vec::new();
 let mut diagnostics = Vec::new();
 process_csv(input.as_slice(), &mut output, &mut diagnostics)?;

@@ -7,6 +7,7 @@
 - No Git user identity exists in repository or global config. Use per-command author settings for commits if necessary.
 - The requested work implements src/main.rs transaction processing and generic streams, including throughput verification.
 - The public library exports process_csv, CsvTransactions, process_txs, Engine, and write_clients. Input and output use standard blocking Read and Write traits.
+- CSV input uses type,client,tx,amount. The transaction column is tx.
 - Amounts use Money(i64) and exact four-place integer arithmetic. The user requested removal of generic money values. Preserve generic input and output streams.
 - Pipeline functions return anyhow::Result and preserve operation context and source errors. Format errors with {error:#} for the complete cause chain. MoneyError and TransactionError remain typed.
 - Tests cover CLI behavior, domain state transitions, amount limits, memory streams, TCP, partial I/O, interrupted reads, and I/O errors. Both debug and release profiles pass 37 integration tests.

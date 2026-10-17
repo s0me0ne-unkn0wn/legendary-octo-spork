@@ -16,7 +16,7 @@ def decimal(minor_units):
 def create_input(directory, workload, rows):
     path = directory / f"{workload}-{rows}.csv"
     with path.open("w", buffering=1024 * 1024) as stream:
-        stream.write("type,client,txid,amount\n")
+        stream.write("type,client,tx,amount\n")
         if workload == "deposits":
             stream.writelines(f"deposit,{index % 1024},{index},1.0001\n" for index in range(rows))
         else:

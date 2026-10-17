@@ -10,7 +10,7 @@ use legendary_octo_spork::{
 
 #[test]
 fn memory_streams_support_the_csv_pipeline() {
-    let input = Cursor::new(b"type,client,txid,amount\ndeposit,1,1,1.2345\n");
+    let input = Cursor::new(b"type,client,tx,amount\ndeposit,1,1,1.2345\n");
     let mut output = Vec::new();
     let mut diagnostics = Vec::new();
     process_csv(input, &mut output, &mut diagnostics).expect("failed to process memory input");
@@ -52,9 +52,9 @@ fn transaction_iterators_accept_records_without_csv() {
 fn incremental_processing_preserves_state_between_inputs() {
     let mut engine = Engine::default();
     for input in [
-        "type,client,txid,amount\ndeposit,1,1,2\n",
-        "type,client,txid,amount\ndispute,1,1,\n",
-        "type,client,txid,amount\nresolve,1,1,\nwithdrawal,1,2,1\n",
+        "type,client,tx,amount\ndeposit,1,1,2\n",
+        "type,client,tx,amount\ndispute,1,1,\n",
+        "type,client,tx,amount\nresolve,1,1,\nwithdrawal,1,2,1\n",
     ] {
         for transaction in
             CsvTransactions::new(input.as_bytes()).expect("failed to create transaction source")
@@ -92,7 +92,7 @@ impl<Stream: Write> Write for ShortStream<Stream> {
 #[test]
 fn partial_reads_and_writes_preserve_record_boundaries() {
     let input = ShortStream {
-        inner: b"type,client,txid,amount\ndeposit,1,1,1.0001\n".as_slice(),
+        inner: b"type,client,tx,amount\ndeposit,1,1,1.0001\n".as_slice(),
         limit: 1,
     };
     let mut output = Vec::new();
@@ -127,7 +127,7 @@ impl<Input: Read> Read for InterruptReader<Input> {
 fn read_interrupts_do_not_discard_partial_transactions() {
     let input = InterruptReader {
         input: ShortStream {
-            inner: b"type,client,txid,amount\ndeposit,1,1,1.0001\n".as_slice(),
+            inner: b"type,client,tx,amount\ndeposit,1,1,1.0001\n".as_slice(),
             limit: 3,
         },
         interrupt: true,
@@ -162,7 +162,7 @@ impl Write for FaultWriter {
 fn output_write_and_flush_errors_do_not_report_success() {
     for flush_only in [false, true] {
         let result = process_csv(
-            b"type,client,txid,amount\n".as_slice(),
+            b"type,client,tx,amount\n".as_slice(),
             FaultWriter { flush_only },
             io::sink(),
         );
@@ -184,7 +184,7 @@ fn diagnostic_write_and_flush_errors_do_not_report_success() {
     for flush_only in [false, true] {
         let mut output = Vec::new();
         let result = process_csv(
-            b"type,client,txid,amount\ndispute,1,1,\n".as_slice(),
+            b"type,client,tx,amount\ndispute,1,1,\n".as_slice(),
             &mut output,
             FaultWriter { flush_only },
         );
@@ -265,7 +265,7 @@ fn tcp_streams_support_the_same_csv_pipeline() {
         .set_read_timeout(Some(Duration::from_secs(10)))
         .expect("failed to set read timeout");
     stream
-        .write_all(b"type,client,txid,amount\ndeposit,1,1,1.2345\n")
+        .write_all(b"type,client,tx,amount\ndeposit,1,1,1.2345\n")
         .expect("failed to write TCP input");
     stream
         .shutdown(Shutdown::Write)
@@ -283,7 +283,7 @@ fn tcp_streams_support_the_same_csv_pipeline() {
 
 #[test]
 fn input_failure_after_a_valid_transaction_stops_account_output() {
-    let input = b"type,client,txid,amount\ndeposit,1,1,1\n"
+    let input = b"type,client,tx,amount\ndeposit,1,1,1\n"
         .as_slice()
         .chain(FaultReader);
     let mut output = Vec::new();
@@ -294,7 +294,7 @@ fn input_failure_after_a_valid_transaction_stops_account_output() {
 
 #[test]
 fn csv_iteration_stops_after_a_record_error() {
-    let input = b"type,client,txid,amount\ndeposit,1,1,0.00001\ndeposit,1,2,1\n";
+    let input = b"type,client,tx,amount\ndeposit,1,1,0.00001\ndeposit,1,2,1\n";
     let mut transactions =
         CsvTransactions::new(input.as_slice()).expect("failed to create CSV source");
     assert!(transactions.next().expect("missing error record").is_err());

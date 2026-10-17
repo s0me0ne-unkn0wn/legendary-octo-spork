@@ -24,7 +24,7 @@ struct CsvTransaction {
     #[serde(rename = "type")]
     ty: CsvTxType,
     client: ClientId,
-    txid: TxId,
+    tx: TxId,
     amount: Option<Money>,
 }
 
@@ -55,13 +55,13 @@ impl<Input: Read> CsvTransactions<Input> {
             .buffer_capacity(IO_BUFFER_CAPACITY)
             .from_reader(RetryReader(input));
         let headers = reader.byte_headers().context("failed to read CSV")?.clone();
-        let columns: [&[u8]; 4] = [b"type", b"client", b"txid", b"amount"];
+        let columns: [&[u8]; 4] = [b"type", b"client", b"tx", b"amount"];
         if headers.len() != columns.len()
             || columns
                 .iter()
                 .any(|column| headers.iter().filter(|header| header == column).count() != 1)
         {
-            bail!("invalid CSV header: require type,client,txid,amount exactly once in any order");
+            bail!("invalid CSV header: require type,client,tx,amount exactly once in any order");
         }
         Ok(Self {
             reader,
@@ -94,7 +94,7 @@ impl<Input: Read> CsvTransactions<Input> {
         Ok(Some(Transaction {
             ty,
             client_id: record.client,
-            id: record.txid,
+            id: record.tx,
         }))
     }
 }

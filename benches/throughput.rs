@@ -28,7 +28,7 @@ fn account_output(counts: &[u32], chargeback: bool) -> Vec<u8> {
 
 fn deposits(rows: u32) -> Workload {
     let mut input = String::with_capacity(rows as usize * 32);
-    input.push_str("type,client,txid,amount\n");
+    input.push_str("type,client,tx,amount\n");
     let mut counts = vec![0; CLIENT_COUNT as usize];
     for id in 0..rows {
         let client = id % CLIENT_COUNT;
@@ -45,7 +45,7 @@ fn deposits(rows: u32) -> Workload {
 
 fn mixed(groups: u32) -> Workload {
     let mut input = String::with_capacity(groups as usize * 100);
-    input.push_str("type,client,txid,amount\n");
+    input.push_str("type,client,tx,amount\n");
     let mut counts = vec![0; CLIENT_COUNT as usize];
     let mut last_ids = vec![0; CLIENT_COUNT as usize];
     for group in 0..groups {
