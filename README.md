@@ -76,7 +76,7 @@ fn process_connection(mut stream: TcpStream) -> anyhow::Result<()> {
 
 The peer must finish its input, for example with `shutdown(Shutdown::Write)`, before reading the account response. These APIs use blocking I/O.
 
-`Money(i64)` stores minor units, so `Money(12_345)` represents `1.2345`. Parsing and balance updates use checked `i64` arithmetic. `ClientId`, `TxId`, and `Money` implement `Deref`. Transaction variants require an amount for deposits and withdrawals, and account fields remain private so callers cannot bypass balance checks.
+`Money(i64)` stores minor units, so `Money(12_345)` represents `1.2345`. Parsing and balance updates use checked `i64` arithmetic. `ClientId`, `TxId`, and `Money` implement `Deref`. Transaction variants require an amount for deposits and withdrawals. Account fields have crate visibility, and the engine validates balance calculations before assigning fields. Client IDs exist as account map keys; output calculates available funds as total minus funds on hold.
 
 The processor does not collect input records. Its CSV loop reuses one byte record and borrows amount text from that record. It uses 64 KiB buffers for input, output, and diagnostics. The reader retries interrupted reads before CSV parsing. Processing takes expected linear time in the number of records, plus account sorting. Memory grows with client count, successful deposits, and the largest CSV record. The engine stores deposit amounts, owners, and dispute flags. Withdrawals create no history entries, and repeated dispute and resolve operations update the same deposit.
 
@@ -96,8 +96,8 @@ On 2026-10-17, Rust 1.94.1 on an Intel Core i9-13900K in this Linux container pr
 
 | In-memory CSV workload | Records | Median time | Records/second | Input MiB/second |
 | --- | ---: | ---: | ---: | ---: |
-| Unique deposits, 1,024 clients | 1,000,000 | 0.198 s | 5.05 million | 124.20 |
-| Deposits, withdrawals, disputes, resolves, and chargebacks | 1,002,048 | 0.146 s | 6.85 million | 149.81 |
+| Unique deposits, 1,024 clients | 1,000,000 | 0.201 s | 4.97 million | 122.20 |
+| Deposits, withdrawals, disputes, resolves, and chargebacks | 1,002,048 | 0.154 s | 6.52 million | 142.73 |
 
 Separate CLI measurements use files with one million and four million rows, with three runs per input and complete output validation. Linux `VmHWM` samples track peak process memory after startup:
 

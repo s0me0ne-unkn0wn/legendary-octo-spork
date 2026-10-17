@@ -153,6 +153,15 @@ fn a_chargeback_preserves_other_dispute_amounts() {
 }
 
 #[test]
+fn chargeback_preserves_available_balance_at_the_numeric_limit() {
+    balances(
+        "type,client,tx,amount\ndeposit,1,1,922337203685477.5806\ndeposit,1,2,0.0001\nwithdrawal,1,3,922337203685477.5807\ndispute,1,1\ndispute,1,2\nchargeback,1,1\nresolve,1,2\n",
+        "1,-922337203685477.5807,0.0001,-922337203685477.5806,true\n",
+        1,
+    );
+}
+
+#[test]
 fn control_records_cannot_replace_the_deposit_amount() {
     balances(
         "type,client,tx,amount\ndeposit,1,1,1\ndispute,1,1,not-money\nresolve,1,1,0.00001\ndispute,1,1,-999\nchargeback,1,1,1e99\n",

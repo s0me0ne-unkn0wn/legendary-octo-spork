@@ -3,6 +3,7 @@ use std::io::{self, Cursor, Read, Write};
 
 use legendary_octo_spork::{
     ClientId, Engine, Money, Transaction, TransactionError, TxId, TxType, process_csv,
+    write_clients,
 };
 
 #[test]
@@ -35,7 +36,12 @@ fn incremental_processing_preserves_dispute_state() {
             })
             .expect("failed to apply transaction");
     }
-    assert_eq!(engine.clients()[&ClientId(1)].available(), Money(10_000));
+    let mut output = Vec::new();
+    write_clients(engine.clients(), &mut output).expect("failed to write clients");
+    assert_eq!(
+        output,
+        b"client,available,held,total,locked\n1,1.0000,0.0000,1.0000,false\n"
+    );
 }
 
 #[test]

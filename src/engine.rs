@@ -3,57 +3,11 @@ use std::fmt;
 
 use crate::{ClientId, Money, Transaction, TxId, TxType};
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ClientInfo {
-    id: ClientId,
-    total: Money,
-    on_hold: Money,
-    lock: bool,
-}
-
-impl ClientInfo {
-    fn new(id: ClientId) -> Self {
-        Self {
-            id,
-            total: Money(0),
-            on_hold: Money(0),
-            lock: false,
-        }
-    }
-
-    pub fn id(&self) -> ClientId {
-        self.id
-    }
-
-    pub fn total(&self) -> Money {
-        self.total
-    }
-
-    pub fn on_hold(&self) -> Money {
-        self.on_hold
-    }
-
-    pub fn available(&self) -> Money {
-        Money(
-            self.total
-                .0
-                .checked_sub(self.on_hold.0)
-                .expect("account balance overflow"),
-        )
-    }
-
-    pub fn lock(&self) -> bool {
-        self.lock
-    }
-
-    fn update(&mut self, total: i64, on_hold: i64) -> Result<(), TransactionError> {
-        total
-            .checked_sub(on_hold)
-            .ok_or(TransactionError::Overflow)?;
-        self.total = Money(total);
-        self.on_hold = Money(on_hold);
-        Ok(())
-    }
+    pub(crate) total: Money,
+    pub(crate) on_hold: Money,
+    pub(crate) lock: bool,
 }
 
 #[derive(Debug)]
@@ -117,9 +71,7 @@ impl Engine {
             return Err(TransactionError::NegativeAmount);
         }
         let account = if deposit {
-            self.clients
-                .entry(transaction.client_id)
-                .or_insert_with(|| ClientInfo::new(transaction.client_id))
+            self.clients.entry(transaction.client_id).or_default()
         } else {
             self.clients
                 .get_mut(&transaction.client_id)
@@ -135,7 +87,12 @@ impl Engine {
                 .checked_add(amount)
                 .ok_or(TransactionError::Overflow)?
         } else {
-            if account.available().0 < amount {
+            let available = account
+                .total
+                .0
+                .checked_sub(account.on_hold.0)
+                .ok_or(TransactionError::Overflow)?;
+            if available < amount {
                 return Err(TransactionError::InsufficientFunds);
             }
             account
@@ -144,7 +101,10 @@ impl Engine {
                 .checked_sub(amount)
                 .ok_or(TransactionError::Overflow)?
         };
-        account.update(total, account.on_hold.0)?;
+        total
+            .checked_sub(account.on_hold.0)
+            .ok_or(TransactionError::Overflow)?;
+        account.total = Money(total);
         if deposit {
             self.deposits.insert(
                 transaction.id,
@@ -174,47 +134,57 @@ impl Engine {
             return Err(TransactionError::AccountLock);
         }
         let amount = deposit.amount.0;
-        let (total, on_hold, dispute, lock) = match (transaction.ty, deposit.dispute) {
-            (TxType::Dispute, false) => (
-                account.total.0,
-                account
+        match (transaction.ty, deposit.dispute) {
+            (TxType::Dispute, false) => {
+                let on_hold = account
                     .on_hold
                     .0
                     .checked_add(amount)
-                    .ok_or(TransactionError::Overflow)?,
-                true,
-                false,
-            ),
-            (TxType::Resolve, true) => (
-                account.total.0,
-                account
-                    .on_hold
-                    .0
-                    .checked_sub(amount)
-                    .ok_or(TransactionError::Overflow)?,
-                false,
-                false,
-            ),
-            (TxType::Chargeback, true) => (
+                    .ok_or(TransactionError::Overflow)?;
                 account
                     .total
                     .0
-                    .checked_sub(amount)
-                    .ok_or(TransactionError::Overflow)?,
-                account
+                    .checked_sub(on_hold)
+                    .ok_or(TransactionError::Overflow)?;
+                account.on_hold = Money(on_hold);
+                deposit.dispute = true;
+            }
+            (TxType::Resolve, true) => {
+                let on_hold = account
                     .on_hold
                     .0
                     .checked_sub(amount)
-                    .ok_or(TransactionError::Overflow)?,
-                false,
-                true,
-            ),
+                    .ok_or(TransactionError::Overflow)?;
+                account
+                    .total
+                    .0
+                    .checked_sub(on_hold)
+                    .ok_or(TransactionError::Overflow)?;
+                account.on_hold = Money(on_hold);
+                deposit.dispute = false;
+            }
+            (TxType::Chargeback, true) => {
+                let total = account
+                    .total
+                    .0
+                    .checked_sub(amount)
+                    .ok_or(TransactionError::Overflow)?;
+                let on_hold = account
+                    .on_hold
+                    .0
+                    .checked_sub(amount)
+                    .ok_or(TransactionError::Overflow)?;
+                total
+                    .checked_sub(on_hold)
+                    .ok_or(TransactionError::Overflow)?;
+                account.total = Money(total);
+                account.on_hold = Money(on_hold);
+                account.lock = true;
+                deposit.dispute = false;
+            }
             (TxType::Dispute, true) => return Err(TransactionError::DisputeConflict),
             _ => return Err(TransactionError::NoDispute),
-        };
-        account.update(total, on_hold)?;
-        account.lock = lock;
-        deposit.dispute = dispute;
+        }
         Ok(())
     }
 }

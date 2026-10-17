@@ -12,8 +12,9 @@
 - CSV input uses type,client,tx,amount. The transaction column is tx.
 - Control records use the deposit ID and full deposit amount. They can omit a trailing amount field; the parser ignores any control amount.
 - Only deposits create accounts and history entries. Withdrawals on missing accounts return InsufficientFunds. The engine assumes unique deposit IDs and performs no duplicate ID validation.
-- Amounts use Money(i64) and exact four-place integer arithmetic. The user requested removal of generic money values. Preserve generic input and output streams.
+- ClientInfo derives Default and contains pub(crate) total, on_hold, and lock fields. It has no methods or duplicate client ID. The engine checks balance calculations before direct field assignments; CSV output uses map keys and calculates available funds from total minus on_hold.
+- Amounts use Money(i64) and exact four-place integer arithmetic. Money derives Default with value zero. The user requested removal of generic money values. Preserve generic input and output streams.
 - Pipeline functions return anyhow::Result and preserve operation context and source errors. Format errors with {error:#} for the complete cause chain. MoneyError and TransactionError remain typed.
-- Tests cover CLI behavior, domain state transitions, amount limits, memory streams, partial I/O, interrupted reads, and I/O errors. Both debug and release profiles pass 35 integration tests; the per-client arithmetic check uses the CSV pipeline.
+- Tests cover CLI behavior, domain state transitions, amount limits, memory streams, partial I/O, interrupted reads, and I/O errors. Both debug and release profiles pass 36 integration tests; the per-client arithmetic check uses the CSV pipeline.
 - benches/throughput.rs validates complete CSV output. Task measurements exist in .agent/worklog/benchmark.json and .agent/worklog/throughput.json.
 - README.md documents API examples, transaction behavior, memory growth, benchmark results, and commands.
