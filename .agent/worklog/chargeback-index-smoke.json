@@ -1,0 +1,133 @@
+{
+  "date": "2026-10-18",
+  "rustc": "rustc 1.94.1 (e408947bf 2026-03-25)",
+  "cpu": "13th Gen Intel(R) Core(TM) i9-13900K",
+  "clients": 1024,
+  "rounds": 1,
+  "method": "median fresh CLI process time; maximum child VmHWM at 1 ms; complete output validation",
+  "variants": {
+    "without-index": {
+      "branch": "perf/chargeback-records",
+      "commit": "6e27bd1b25fb861081d1d4183fe6590caf823ac0",
+      "binary_sha256": "5b0de262c32094d23ace91fd68c5b5e4a83dd0abcb782ef85d9d5c97651ae673"
+    },
+    "with-index": {
+      "branch": "perf/client-deposit-index",
+      "commit": "aef2648356d3e69220984237ba497c8a561c280d",
+      "binary_sha256": "a5f2386fbbee3aef6c0689d5532f03d3270b79d42f247b5a2a56b02dce4eaa9f"
+    }
+  },
+  "results": [
+    {
+      "pattern": "late",
+      "rows": 10000,
+      "deposits": 1988,
+      "chargebacks": 1024,
+      "input_bytes": 203740,
+      "input_sha256": "c7b1b6f74d5a42913fe40f7a7ca34a57099ca3d2aed96881a15b8e7c7835c25b",
+      "expected_output_sha256": "8ca793276fb0c46346590a4e17f4b63daa2e89bf3ac0338f0306a6b33e283128",
+      "variants": {
+        "without-index": {
+          "samples": [
+            {
+              "seconds": 0.0036392860347405076,
+              "peak_rss_kib": 2528,
+              "resource_peak_rss_kib": 25128
+            }
+          ],
+          "median_seconds": 0.0036392860347405076,
+          "rows_per_second": 2747791.7109400914,
+          "mib_per_second": 53.39003402585356,
+          "peak_rss_kib": 2528
+        },
+        "with-index": {
+          "samples": [
+            {
+              "seconds": 0.004450018052011728,
+              "peak_rss_kib": 2580,
+              "resource_peak_rss_kib": 25168
+            }
+          ],
+          "median_seconds": 0.004450018052011728,
+          "rows_per_second": 2247181.8952463083,
+          "mib_per_second": 43.66310494780377,
+          "peak_rss_kib": 2580
+        }
+      }
+    },
+    {
+      "pattern": "half",
+      "rows": 10000,
+      "deposits": 2244,
+      "chargebacks": 512,
+      "input_bytes": 205808,
+      "input_sha256": "b3dfbabaf6ed0aa5b943f3429ad7c89a1540fe88a98c48cb890bc055c1dcd3f9",
+      "expected_output_sha256": "7576fc4213e321b6e098b2273985a3326d098dd196c550ab5f3ffcbc3a9847b2",
+      "variants": {
+        "without-index": {
+          "samples": [
+            {
+              "seconds": 0.003578915959224105,
+              "peak_rss_kib": 2404,
+              "resource_peak_rss_kib": 25168
+            }
+          ],
+          "median_seconds": 0.003578915959224105,
+          "rows_per_second": 2794142.1687275274,
+          "mib_per_second": 54.84169115652799,
+          "peak_rss_kib": 2404
+        },
+        "with-index": {
+          "samples": [
+            {
+              "seconds": 0.004445789032615721,
+              "peak_rss_kib": 2476,
+              "resource_peak_rss_kib": 25168
+            }
+          ],
+          "median_seconds": 0.004445789032615721,
+          "rows_per_second": 2249319.508109094,
+          "mib_per_second": 44.148249561778684,
+          "peak_rss_kib": 2476
+        }
+      }
+    },
+    {
+      "pattern": "all",
+      "rows": 10000,
+      "deposits": 1988,
+      "chargebacks": 1024,
+      "input_bytes": 203186,
+      "input_sha256": "eb446c0deb7d2bdfa583a74c1fb313ddce1d4431cf0f7f959b3e5404825c6bf3",
+      "expected_output_sha256": "8ca793276fb0c46346590a4e17f4b63daa2e89bf3ac0338f0306a6b33e283128",
+      "variants": {
+        "without-index": {
+          "samples": [
+            {
+              "seconds": 0.004526066943071783,
+              "peak_rss_kib": 2592,
+              "resource_peak_rss_kib": 25168
+            }
+          ],
+          "median_seconds": 0.004526066943071783,
+          "rows_per_second": 2209423.794605462,
+          "mib_per_second": 42.812727273054634,
+          "peak_rss_kib": 2592
+        },
+        "with-index": {
+          "samples": [
+            {
+              "seconds": 0.004464422003366053,
+              "peak_rss_kib": 2476,
+              "resource_peak_rss_kib": 25168
+            }
+          ],
+          "median_seconds": 0.004464422003366053,
+          "rows_per_second": 2239931.6176786763,
+          "mib_per_second": 43.40388733574481,
+          "peak_rss_kib": 2476
+        }
+      }
+    }
+  ]
+}
