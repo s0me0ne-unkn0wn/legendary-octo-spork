@@ -1,6 +1,6 @@
 # Legendary Octo Spork
 
-Legendary Octo Spork is a novel transaction processing engine! It aggregates incoming CSV transaction history into the account balance report, taking care of deposites, withdrawals, disputes and chargebacks.
+Legendary Octo Spork is a novel transaction processing engine! It aggregates incoming CSV transaction history into the account balance report, handling deposits, withdrawals, disputes, and chargebacks.
 
 # Usage example
 
@@ -19,7 +19,7 @@ resolve,1,1
 deposit,2,3,1
 ```
 
-the following output is produced:
+The following output is produced:
 
 ```csv
 client,available,held,total,locked
@@ -29,15 +29,16 @@ client,available,held,total,locked
 
 # Design bits
 
-* Money values are `i64` and stored as fixed point with 4-digit precision. The limits of `i64` are orders of magnitute higher than the total issuance of U.S. dollars expressed in 1/100s of cants, or the total issuance of Bitcoin expressed in satoshi. Whenever wider limits are needed, the inner type may be easily replaced with `i128` for the price of slower arithmetics.
+* Money values are `i64` and stored as fixed point with 4-digit precision. The limits of `i64` are orders of magnitude higher than the total issuance of U.S. dollars expressed in 1/100s of cents, or the total issuance of Bitcoin expressed in satoshi. Whenever wider limits are needed, the inner type may be easily replaced with `i128` for the price of slower arithmetic.
 * Inexecutable transactions (containing wrong data, or of invalid format, or requesting operation outside of the account limits) are logged to `stderr`.
-* Deposits are assumed to be in fiat money, and withdrawals are to blockchain. Thus, only deposits are deemed disputable.
-* For that matter, the withdrawals are not memorized by the engine for the sake of memory optimization. A trade-off is we cannot check for duplicate transaction IDs for withdrawals, but the IDs are guaranteed to be uniq anyway.
-* Charging back a deposit due to a dispute may put an account to negative total. Writing off losses is up to the financial department, we're purely adding numbers here and not making any financial decisions.
-* Currently, a chargeback locks account from all the operations. It's arguable if deposits should be still allowed for the sake of minimizing losses.
+* Deposits are assumed to be in fiat money, and withdrawals are to the blockchain. Thus, only deposits are deemed disputable.
+* For that matter, the withdrawals are not memorized by the engine for the sake of memory optimization. The trade-off is that we cannot check for duplicate transaction IDs for withdrawals, but the IDs are guaranteed to be unique anyway.
+* Deposits, for which disputes have been resolved, may be disputed again. A chargeback, on the other hand, is final. A chargeback on any deposit locks the account, so at that point we drop the data for all deposits on that account to free memory.
+* Charging back a deposit due to a dispute may put an account to a negative total. Writing off losses is up to the financial department, we're purely adding numbers here and not making any financial decisions.
+* Currently, a chargeback locks the account from all operations. It's arguable whether deposits should still be allowed to minimize losses.
 * A withdrawal without a previous deposit does not create an empty client account. Reasoning: withdrawing from a non-existent account is an inexecutable transaction. Inexecutable transactions must be idempotent for the sake of data consistency.
 * CSV processing logic is reusable with any other stream implementing `Read`.
-* Lower level transaction processing logic is generalized to ingest data from arbitrary parsers providing transaction data, therefor it's reusable as well.
+* Lower-level transaction processing logic is generalized to ingest data from arbitrary parsers providing transaction data, therefore, it's reusable as well.
 
 # Examples of usage with other stream types
 
@@ -68,55 +69,34 @@ The peer must finish its input, for example with `shutdown(Shutdown::Write)`, be
 
 # Benchmarks
 
-The [Criterion](https://docs.rs/criterion/0.8.2/criterion/) benchmark covers one million unique deposits and about one million mixed records, including all five transaction types.
+Ran on an Intel Core i9-13900K. Each input uses 1,024 clients and exactly 1, 10, or 100 million transaction rows, excluding the CSV header.
 
-On 2026-10-18, Criterion 0.8.2 with Rust 1.94.1 on an Intel Core i9-13900K:
+Workloads:
 
-| In-memory CSV workload | Records | Mean time | 95% time interval | Records/second | Input MiB/second |
+- **Deposits:** unique deposits, rotating through all clients.
+- **Mixed:** rotating clients, each with a deposit followed by a withdrawal, dispute of that deposit, and resolution. No chargebacks.
+- **Chargebacks at EOF:** mixed groups rotating through all clients, then a dispute and chargeback of each client's last deposit. All accounts close at EOF.
+- **Half close after batches:** mixed groups in sequential client batches. Half of the clients close immediately after their batch; the other half remain open.
+- **All close after batches:** mixed groups in sequential client batches, with each client account closing immediately after its batch.
+
+| Workload | Transactions | Median seconds | Million tx/s | Input MiB/s | Peak RSS MiB |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Unique deposits, 1,024 clients | 1,000,000 | 170.37 ms | 170.22–170.53 ms | 5.87 million | 144.45 |
-| Deposits, withdrawals, disputes, resolves, and chargebacks | 1,002,048 | 152.55 ms | 152.10–153.02 ms | 6.57 million | 143.70 |
+| Deposits | 1,000,000 | 0.204 | 4.90 | 120.7 | 81.3 |
+| Mixed | 1,000,000 | 0.164 | 6.11 | 133.6 | 22.0 |
+| Chargebacks at EOF | 1,000,000 | 0.172 | 5.81 | 127.0 | 22.1 |
+| Half close after batches | 1,000,000 | 0.162 | 6.18 | 135.2 | 12.1 |
+| All close after batches | 1,000,000 | 0.157 | 6.35 | 138.9 | 2.5 |
+| Deposits | 10,000,000 | 2.006 | 4.98 | 127.4 | 634.2 |
+| Mixed | 10,000,000 | 1.532 | 6.53 | 149.1 | 160.2 |
+| Chargebacks at EOF | 10,000,000 | 1.647 | 6.07 | 138.6 | 160.2 |
+| Half close after batches | 10,000,000 | 1.506 | 6.64 | 151.7 | 82.4 |
+| All close after batches | 10,000,000 | 1.450 | 6.90 | 157.5 | 2.6 |
+| Deposits | 100,000,000 | 27.326 | 3.66 | 97.0 | 5,045.1 |
+| Mixed | 100,000,000 | 16.838 | 5.94 | 141.3 | 1,264.3 |
+| Chargebacks at EOF | 100,000,000 | 19.064 | 5.25 | 124.8 | 1,264.3 |
+| Half close after batches | 100,000,000 | 15.826 | 6.32 | 150.3 | 631.6 |
+| All close after batches | 100,000,000 | 15.057 | 6.64 | 158.0 | 4.7 |
 
-Separate CLI measurements use files with one million and four million rows, with three runs per input and complete output validation. Linux `VmHWM` samples track peak process memory after startup:
+# Future work
 
-| CLI workload | Records | Median time | Records/second | Peak memory |
-| --- | ---: | ---: | ---: | ---: |
-| Unique deposits, 1,024 clients | 1,000,000 | 0.209 s | 4.78 million | 77.3 MiB |
-| Unique deposits, 1,024 clients | 4,000,000 | 0.838 s | 4.77 million | 302.4 MiB |
-| Withdrawals after one initial deposit | 1,000,000 | 0.160 s | 6.26 million | 2.2 MiB |
-| Withdrawals after one initial deposit | 4,000,000 | 0.609 s | 6.56 million | 2.2 MiB |
-| Repeated dispute/resolve on one deposit | 1,000,000 | 0.115 s | 8.69 million | 2.2 MiB |
-| Repeated dispute/resolve on one deposit | 4,000,000 | 0.406 s | 9.86 million | 2.2 MiB |
-
-## Chargeback history comparison
-
-On 2026-10-18, Rust 1.94.1 on an Intel Core i9-13900K, with 1,024 clients (`1..=1024`).
-
-Two implementation branches:
-
-- `perf/chargeback-records`: remove only the deposit that completes a chargeback.
-- `perf/client-deposit-index`: store deposit IDs per client and remove all of that account's deposit history when a chargeback locks it. Account balances and funds on hold remain in the account record.
-
-Each mixed group contains a deposit, withdrawal, dispute, and resolve. Each chargeback has a preceding dispute. The operation counts below include all of these records exactly.
-
-- At EOF: distribute groups across clients, then charge back all 1,024 accounts.
-- Half during input: process clients in batches; charge back the first 512 accounts after their batches and leave the remaining accounts open.
-- All during input: process clients in batches and charge back each account after its batch.
-
-Each table entry uses three fresh release CLI processes reading the same CSV file and writing account CSV to a file. The variant order alternates between runs. Throughput uses median elapsed time, including startup and file I/O. Peak process memory uses the maximum Linux `VmHWM` sample at 1 ms intervals. Input generation and complete output validation run outside the CLI process; all 54 runs validate every account and empty diagnostics.
-
-| Chargeback pattern | Operations | Peak memory without index | Peak memory with index | Ops/second without index | Ops/second with index |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| At EOF | 1,000,000 | 21.1 MiB | 21.9 MiB | 6.03 million | 5.66 million |
-| Half during input | 1,000,000 | 20.9 MiB | 11.9 MiB | 5.99 million | 6.14 million |
-| All during input | 1,000,000 | 21.1 MiB | 2.5 MiB | 5.90 million | 6.26 million |
-| At EOF | 10,000,000 | 152.3 MiB | 160.2 MiB | 6.27 million | 5.77 million |
-| Half during input | 10,000,000 | 152.3 MiB | 82.2 MiB | 6.12 million | 6.52 million |
-| All during input | 10,000,000 | 152.2 MiB | 2.6 MiB | 6.20 million | 6.64 million |
-| At EOF | 100,000,000 | 1,202.4 MiB | 1,264.4 MiB | 5.88 million | 5.33 million |
-| Half during input | 100,000,000 | 1,202.4 MiB | 631.3 MiB | 5.99 million | 6.39 million |
-| All during input | 100,000,000 | 1,202.2 MiB | 4.5 MiB | 6.01 million | 6.79 million |
-
-At 100 million operations, the index adds 5.2% peak memory and reduces throughput 9.5% with chargebacks at EOF. With half the accounts closing during input, it reduces peak memory 47.5%. With every account closing during input, peak memory decreases from 1,202.2 MiB to 4.5 MiB.
-
-The index benefits the measured workloads where chargebacks remove deposit histories before later deposits arrive. The EOF and all-batched patterns both have 1,024 chargebacks, so timing and history size per account determine the saving. Hash-table capacity grows in steps and remains available for reuse after removal. Open accounts still require their full deposit history. The all-batched case retains one client batch at a time, and that batch grows with the total operation count in this comparison.
+Investigate the throughput degradation at 100M deposits: profiling is needed.
