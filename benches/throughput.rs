@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use common::assert_accounts;
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
-use legendary_octo_spork::{Money, process_csv};
+use legendary_octo_spork::{process_csv, types::Money};
 
 const CLIENT_COUNT: u32 = 1024;
 

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use crate::{ClientId, Money, Transaction, TxId, TxType};
+use crate::types::{ClientId, Money, Transaction, TxId, TxType};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ClientInfo {

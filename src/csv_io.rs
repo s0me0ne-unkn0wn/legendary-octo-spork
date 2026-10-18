@@ -4,10 +4,10 @@ use std::io::{self, BufWriter, Read, Write};
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    ClientId, ClientInfo, Engine, Error, IO_BUFFER_CAPACITY, Money, RECORD_BUFFER_SIZE,
-    RECORD_MAX_FIELDS, Transaction, TransactionError, TxId, TxType,
-};
+use crate::engine::{ClientInfo, Engine, TransactionError};
+use crate::error::Error;
+use crate::types::{ClientId, Money, Transaction, TxId, TxType};
+use crate::{IO_BUFFER_CAPACITY, RECORD_BUFFER_SIZE, RECORD_MAX_FIELDS};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]

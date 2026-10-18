@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io;
 
 use anyhow::{Context, Result, bail};
-use legendary_octo_spork::{Error, process_csv};
+use legendary_octo_spork::{error::Error, process_csv};
 
 fn main() -> Result<()> {
     let mut arguments = std::env::args_os().skip(1);

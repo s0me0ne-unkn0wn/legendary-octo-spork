@@ -1,12 +1,10 @@
+pub mod engine;
+pub mod error;
+pub mod types;
+
 mod csv_io;
-mod engine;
-mod error;
-mod types;
 
 pub use csv_io::{process_csv, write_clients};
-pub use engine::{ClientInfo, Engine, TransactionError};
-pub use error::Error;
-pub use types::{ClientId, Money, MoneyError, Transaction, TxId, TxType};
 
 const RECORD_BUFFER_SIZE: usize = 128;
 const RECORD_MAX_FIELDS: usize = 4;

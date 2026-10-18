@@ -4,8 +4,11 @@ use std::io::{self, Read, Write};
 
 use common::assert_accounts;
 use legendary_octo_spork::{
-    ClientId, Engine, Error, Money, MoneyError, Transaction, TransactionError, TxId, TxType,
+    engine::{Engine, TransactionError},
+    error::Error,
     process_csv,
+    types::ClientId,
+    types::{Money, MoneyError, Transaction, TxId, TxType},
 };
 
 #[test]
