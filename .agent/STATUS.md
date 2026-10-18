@@ -1,1 +1,1 @@
-worklog/errors-criterion.md
+worklog/money-arithmetic.md

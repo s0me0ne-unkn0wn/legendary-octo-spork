@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     ClientId, ClientInfo, Engine, Error, IO_BUFFER_CAPACITY, Money, RECORD_BUFFER_SIZE,
-    RECORD_MAX_FIELDS, Transaction, TxId, TxType,
+    RECORD_MAX_FIELDS, Transaction, TransactionError, TxId, TxType,
 };
 
 #[derive(Deserialize)]
@@ -124,7 +124,10 @@ pub fn write_clients(clients: &HashMap<ClientId, ClientInfo>, output: impl Write
         writer
             .serialize(CsvClient {
                 client: *client_id,
-                available: Money(client.total.0 - client.on_hold.0),
+                available: client
+                    .total
+                    .checked_sub(client.on_hold)
+                    .ok_or(TransactionError::Overflow)?,
                 on_hold: client.on_hold,
                 total: client.total,
                 lock: client.lock,

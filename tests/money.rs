@@ -1,6 +1,28 @@
 use legendary_octo_spork::{Money, MoneyError};
 
 #[test]
+fn arithmetic_preserves_minor_units_and_rejects_overflow() {
+    for (amount, other, sum, difference) in [
+        (10_001, 2, Some(10_003), Some(9_999)),
+        (-1, 2, Some(1), Some(-3)),
+        (i64::MAX, 0, Some(i64::MAX), Some(i64::MAX)),
+        (i64::MIN, 0, Some(i64::MIN), Some(i64::MIN)),
+        (i64::MAX, 1, None, Some(i64::MAX - 1)),
+        (i64::MAX, -1, Some(i64::MAX - 1), None),
+        (i64::MIN, 1, Some(i64::MIN + 1), None),
+        (i64::MIN, -1, None, Some(i64::MIN + 1)),
+        (0, i64::MIN, Some(i64::MIN), None),
+        (i64::MIN, i64::MIN, None, Some(0)),
+    ] {
+        assert_eq!(Money(amount).checked_add(Money(other)), sum.map(Money));
+        assert_eq!(
+            Money(amount).checked_sub(Money(other)),
+            difference.map(Money)
+        );
+    }
+}
+
+#[test]
 fn decimal_values_use_exact_minor_units() {
     for (text, minor_units, output) in [
         ("0", 0, "0.0000"),

@@ -53,6 +53,18 @@ pub struct Transaction {
 #[repr(transparent)]
 pub struct Money(pub i64);
 
+impl Money {
+    #[inline]
+    pub fn checked_add(self, other: Self) -> Option<Self> {
+        self.0.checked_add(other.0).map(Self)
+    }
+
+    #[inline]
+    pub fn checked_sub(self, other: Self) -> Option<Self> {
+        self.0.checked_sub(other.0).map(Self)
+    }
+}
+
 impl Deref for Money {
     type Target = i64;
 

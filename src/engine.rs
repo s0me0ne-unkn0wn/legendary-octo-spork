@@ -63,11 +63,11 @@ impl Engine {
 
     pub fn apply(&mut self, transaction: Transaction) -> Result<(), TransactionError> {
         let (amount, deposit) = match transaction.ty {
-            TxType::Deposit(amount) => (amount.0, true),
-            TxType::Withdrawal(amount) => (amount.0, false),
+            TxType::Deposit(amount) => (amount, true),
+            TxType::Withdrawal(amount) => (amount, false),
             _ => return self.apply_control(transaction),
         };
-        if amount < 0 {
+        if amount < Money(0) {
             return Err(TransactionError::NegativeAmount);
         }
         let account = if deposit {
@@ -83,34 +83,31 @@ impl Engine {
         let total = if deposit {
             account
                 .total
-                .0
                 .checked_add(amount)
                 .ok_or(TransactionError::Overflow)?
         } else {
             let available = account
                 .total
-                .0
-                .checked_sub(account.on_hold.0)
+                .checked_sub(account.on_hold)
                 .ok_or(TransactionError::Overflow)?;
             if available < amount {
                 return Err(TransactionError::InsufficientFunds);
             }
             account
                 .total
-                .0
                 .checked_sub(amount)
                 .ok_or(TransactionError::Overflow)?
         };
         total
-            .checked_sub(account.on_hold.0)
+            .checked_sub(account.on_hold)
             .ok_or(TransactionError::Overflow)?;
-        account.total = Money(total);
+        account.total = total;
         if deposit {
             self.deposits.insert(
                 transaction.id,
                 Deposit {
                     client_id: transaction.client_id,
-                    amount: Money(amount),
+                    amount,
                     dispute: false,
                 },
             );
@@ -133,52 +130,46 @@ impl Engine {
         if account.lock {
             return Err(TransactionError::AccountLock);
         }
-        let amount = deposit.amount.0;
+        let amount = deposit.amount;
         match (transaction.ty, deposit.dispute) {
             (TxType::Dispute, false) => {
                 let on_hold = account
                     .on_hold
-                    .0
                     .checked_add(amount)
                     .ok_or(TransactionError::Overflow)?;
                 account
                     .total
-                    .0
                     .checked_sub(on_hold)
                     .ok_or(TransactionError::Overflow)?;
-                account.on_hold = Money(on_hold);
+                account.on_hold = on_hold;
                 deposit.dispute = true;
             }
             (TxType::Resolve, true) => {
                 let on_hold = account
                     .on_hold
-                    .0
                     .checked_sub(amount)
                     .ok_or(TransactionError::Overflow)?;
                 account
                     .total
-                    .0
                     .checked_sub(on_hold)
                     .ok_or(TransactionError::Overflow)?;
-                account.on_hold = Money(on_hold);
+                account.on_hold = on_hold;
                 deposit.dispute = false;
             }
             (TxType::Chargeback, true) => {
                 let total = account
                     .total
-                    .0
                     .checked_sub(amount)
                     .ok_or(TransactionError::Overflow)?;
                 let on_hold = account
                     .on_hold
-                    .0
                     .checked_sub(amount)
                     .ok_or(TransactionError::Overflow)?;
                 total
                     .checked_sub(on_hold)
                     .ok_or(TransactionError::Overflow)?;
-                account.total = Money(total);
-                account.on_hold = Money(on_hold);
+                account.total = total;
+                account.on_hold = on_hold;
                 account.lock = true;
                 deposit.dispute = false;
             }
