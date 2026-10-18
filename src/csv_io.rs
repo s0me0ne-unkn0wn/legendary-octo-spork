@@ -5,8 +5,8 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ClientId, ClientInfo, Engine, IO_BUFFER_CAPACITY, Money, RECORD_BUFFER_SIZE, RECORD_MAX_FIELDS,
-    Transaction, TxId, TxType,
+    ClientId, ClientInfo, Engine, Error, IO_BUFFER_CAPACITY, Money, RECORD_BUFFER_SIZE,
+    RECORD_MAX_FIELDS, Transaction, TxId, TxType,
 };
 
 #[derive(Deserialize)]
@@ -51,33 +51,31 @@ fn process_txs(
         .flexible(true)
         .buffer_capacity(IO_BUFFER_CAPACITY)
         .from_reader(RetryReader(input));
-    let headers = reader.byte_headers().context("failed to read CSV")?.clone();
+    let headers = reader.byte_headers().context(Error::ReadCsv)?.clone();
     let columns: [&[u8]; 4] = [b"type", b"client", b"tx", b"amount"];
     if headers.len() != columns.len()
         || columns
             .iter()
             .any(|column| headers.iter().filter(|header| header == column).count() != 1)
     {
-        bail!("invalid CSV header: require type,client,tx,amount exactly once in any order");
+        bail!(Error::InvalidHeader);
     }
     let mut engine = Engine::default();
     let mut record = csv::ByteRecord::with_capacity(RECORD_BUFFER_SIZE, RECORD_MAX_FIELDS);
     while reader
         .read_byte_record(&mut record)
-        .context("failed to read CSV")?
+        .context(Error::ReadCsv)?
     {
         let line = record.position().map_or(0, csv::Position::line);
         if record.len() > headers.len() {
-            bail!("too many fields at CSV line {line}");
+            bail!(Error::ExtraFields { line });
         }
-        let row: CsvTransaction<'_> = record
-            .deserialize(Some(&headers))
-            .context("failed to read CSV")?;
+        let row: CsvTransaction<'_> = record.deserialize(Some(&headers)).context(Error::ReadCsv)?;
         let amount = || {
             row.amount
-                .with_context(|| format!("missing amount at CSV line {line}: deposits and withdrawals require an amount"))?
+                .context(Error::MissingAmount { line })?
                 .parse::<Money>()
-                .with_context(|| format!("invalid amount at CSV line {line}"))
+                .context(Error::InvalidAmount { line })
         };
         let ty = match row.ty {
             CsvTxType::Deposit => TxType::Deposit(amount()?),
@@ -97,7 +95,7 @@ fn process_txs(
                 "client {}, transaction {}: {error}",
                 *transaction.client_id, *transaction.id
             )
-            .context("failed to write diagnostics")?;
+            .context(Error::WriteDiagnostics)?;
         }
     }
     Ok(engine.into_clients())
@@ -121,7 +119,7 @@ pub fn write_clients(clients: &HashMap<ClientId, ClientInfo>, output: impl Write
         .from_writer(output);
     writer
         .write_record(["client", "available", "held", "total", "locked"])
-        .context("failed to write account CSV")?;
+        .context(Error::WriteAccounts)?;
     for (client_id, client) in clients.iter() {
         writer
             .serialize(CsvClient {
@@ -131,15 +129,15 @@ pub fn write_clients(clients: &HashMap<ClientId, ClientInfo>, output: impl Write
                 total: client.total,
                 lock: client.lock,
             })
-            .context("failed to write account CSV")?;
+            .context(Error::WriteAccounts)?;
     }
-    writer.flush().context("failed to write account CSV")
+    writer.flush().context(Error::WriteAccounts)
 }
 
 pub fn process_csv(input: impl Read, output: impl Write, diagnostics: impl Write) -> Result<()> {
     let mut diagnostics = BufWriter::with_capacity(IO_BUFFER_CAPACITY, diagnostics);
     let clients = process_txs(input, &mut diagnostics);
-    diagnostics.flush().context("failed to write diagnostics")?;
+    diagnostics.flush().context(Error::WriteDiagnostics)?;
     let clients = clients?;
     write_clients(&clients, output)
 }

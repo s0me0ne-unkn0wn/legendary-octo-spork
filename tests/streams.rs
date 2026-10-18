@@ -4,7 +4,8 @@ use std::io::{self, Read, Write};
 
 use common::assert_accounts;
 use legendary_octo_spork::{
-    ClientId, Engine, Money, Transaction, TransactionError, TxId, TxType, process_csv,
+    ClientId, Engine, Error, Money, MoneyError, Transaction, TransactionError, TxId, TxType,
+    process_csv,
 };
 
 #[test]
@@ -67,12 +68,12 @@ impl Write for FaultWriter {
         if self.flush_only {
             Ok(buffer.len())
         } else {
-            Err(io::Error::other("write failure"))
+            Err(io::ErrorKind::BrokenPipe.into())
         }
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        Err(io::Error::other("flush failure"))
+        Err(io::ErrorKind::WriteZero.into())
     }
 }
 
@@ -85,13 +86,17 @@ fn output_write_and_flush_errors_do_not_report_success() {
             io::sink(),
         );
         let error = result.expect_err("output failure did not propagate");
-        assert!(error.to_string().contains("failed to write account CSV"));
+        assert_eq!(error.downcast_ref::<Error>(), Some(&Error::WriteAccounts));
         assert_eq!(
-            error.root_cause().to_string(),
+            error
+                .root_cause()
+                .downcast_ref::<io::Error>()
+                .unwrap()
+                .kind(),
             if flush_only {
-                "flush failure"
+                io::ErrorKind::WriteZero
             } else {
-                "write failure"
+                io::ErrorKind::BrokenPipe
             }
         );
     }
@@ -110,13 +115,20 @@ fn diagnostic_write_and_flush_errors_do_not_report_success() {
             let mut output = Vec::new();
             let result = process_csv(input.as_bytes(), &mut output, FaultWriter { flush_only });
             let error = result.expect_err("diagnostic failure did not propagate");
-            assert!(error.to_string().contains("failed to write diagnostics"));
             assert_eq!(
-                error.root_cause().to_string(),
+                error.downcast_ref::<Error>(),
+                Some(&Error::WriteDiagnostics)
+            );
+            assert_eq!(
+                error
+                    .root_cause()
+                    .downcast_ref::<io::Error>()
+                    .unwrap()
+                    .kind(),
                 if flush_only {
-                    "flush failure"
+                    io::ErrorKind::WriteZero
                 } else {
-                    "write failure"
+                    io::ErrorKind::BrokenPipe
                 }
             );
             assert!(output.is_empty());
@@ -128,7 +140,7 @@ struct FaultReader;
 
 impl Read for FaultReader {
     fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
-        Err(io::Error::other("read failure"))
+        Err(io::ErrorKind::ConnectionReset.into())
     }
 }
 
@@ -143,8 +155,12 @@ fn input_failures_do_not_produce_account_output() {
         let result = process_csv(input.as_bytes().chain(FaultReader), &mut output, io::sink());
         assert!(output.is_empty());
         let error = result.expect_err("input failure did not propagate");
-        assert!(error.to_string().contains("failed to read CSV"));
-        assert_eq!(error.root_cause().to_string(), "read failure");
+        assert_eq!(error.downcast_ref::<Error>(), Some(&Error::ReadCsv));
+        let source = error.downcast_ref::<csv::Error>().unwrap();
+        assert!(matches!(
+            source.kind(),
+            csv::ErrorKind::Io(error) if error.kind() == io::ErrorKind::ConnectionReset
+        ));
     }
 }
 
@@ -161,10 +177,98 @@ fn csv_errors_preserve_prior_diagnostics_and_stop_processing() {
     assert!(output.is_empty());
     assert_eq!(
         diagnostics,
-        b"client 1, transaction 1: insufficient available funds\n"
+        format!(
+            "client 1, transaction 1: {}\n",
+            TransactionError::InsufficientFunds
+        )
+        .as_bytes()
     );
     assert_eq!(
-        error.root_cause().to_string(),
-        "amount exceeds four decimal places"
+        error.downcast_ref::<Error>(),
+        Some(&Error::InvalidAmount { line: 3 })
+    );
+    assert_eq!(
+        error.downcast_ref::<MoneyError>(),
+        Some(&MoneyError::Precision)
+    );
+}
+
+#[test]
+fn csv_errors_identify_the_row_and_amount_problem() {
+    for (input, context, source) in [
+        (
+            "type   , client, tx, amount
+             deposit, 1     , 1 ,\n",
+            Error::MissingAmount { line: 2 },
+            None,
+        ),
+        (
+            "type   , client, tx, amount
+             deposit, 1     , 1 , 1
+             deposit, 1     , 2 , 0.00001\n",
+            Error::InvalidAmount { line: 3 },
+            Some(MoneyError::Precision),
+        ),
+        (
+            "type   , client, tx, amount
+             deposit, 1     , 1 , NaN\n",
+            Error::InvalidAmount { line: 2 },
+            Some(MoneyError::Syntax),
+        ),
+        (
+            "type   , client, tx, amount
+             deposit, 1     , 1 , 922337203685477.5808\n",
+            Error::InvalidAmount { line: 2 },
+            Some(MoneyError::Overflow),
+        ),
+    ] {
+        let mut output = Vec::new();
+        let error = process_csv(input.as_bytes(), &mut output, io::sink())
+            .expect_err("invalid amount did not stop processing");
+        assert!(output.is_empty());
+        assert_eq!(error.downcast_ref::<Error>(), Some(&context));
+        assert_eq!(error.downcast_ref::<MoneyError>(), source.as_ref());
+    }
+}
+
+#[test]
+fn csv_structure_errors_identify_the_header_or_record() {
+    for (input, context) in [
+        (
+            "type   , client, client, amount
+             deposit, 1     , 1     , 1\n",
+            Error::InvalidHeader,
+        ),
+        (
+            "type   , client, tx, amount
+             deposit, 1     , 1 , 1     , extra\n",
+            Error::ExtraFields { line: 2 },
+        ),
+    ] {
+        let mut output = Vec::new();
+        let error = process_csv(input.as_bytes(), &mut output, io::sink())
+            .expect_err("invalid CSV structure did not stop processing");
+        assert!(output.is_empty());
+        assert_eq!(error.downcast_ref::<Error>(), Some(&context));
+    }
+}
+
+#[test]
+fn csv_field_errors_preserve_the_record_position() {
+    let input = b"type   , client, tx, amount
+                  deposit, 1     , 1 , 1
+                  unknown, 1     , 2 , 1\n";
+    let mut output = Vec::new();
+    let error = process_csv(input.as_slice(), &mut output, io::sink())
+        .expect_err("invalid transaction type did not stop processing");
+    assert!(output.is_empty());
+    assert_eq!(error.downcast_ref::<Error>(), Some(&Error::ReadCsv));
+    assert_eq!(
+        error
+            .downcast_ref::<csv::Error>()
+            .unwrap()
+            .position()
+            .map(csv::Position::line),
+        Some(3)
     );
 }

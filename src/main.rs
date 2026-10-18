@@ -1,19 +1,15 @@
 use std::fs::File;
 use std::io;
-use std::path::Path;
 
 use anyhow::{Context, Result, bail};
-use legendary_octo_spork::process_csv;
+use legendary_octo_spork::{Error, process_csv};
 
 fn main() -> Result<()> {
     let mut arguments = std::env::args_os().skip(1);
-    let path = arguments
-        .next()
-        .context("usage: legendary-octo-spork <input.csv>")?;
+    let path = arguments.next().context(Error::Usage)?;
     if arguments.next().is_some() {
-        bail!("usage: legendary-octo-spork <input.csv>");
+        bail!(Error::Usage);
     }
-    let input = File::open(&path)
-        .with_context(|| format!("failed to open '{}'", Path::new(&path).display()))?;
+    let input = File::open(&path).with_context(|| Error::OpenInput(path.into()))?;
     process_csv(input, io::stdout().lock(), io::stderr().lock())
 }

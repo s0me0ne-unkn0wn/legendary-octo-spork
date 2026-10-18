@@ -5,6 +5,7 @@ use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use common::assert_accounts;
+use legendary_octo_spork::Error;
 
 static NEXT_FILE: AtomicU64 = AtomicU64::new(0);
 
@@ -391,32 +392,6 @@ fn malformed_csv_stops_processing_without_account_output() {
 }
 
 #[test]
-fn csv_errors_identify_the_row_and_amount_problem() {
-    for (input, line, problem) in [
-        (
-            "type   , client, tx, amount
-             deposit, 1     , 1 ,\n",
-            "line 2",
-            "missing amount",
-        ),
-        (
-            "type   , client, tx, amount
-             deposit, 1     , 1 , 1
-             deposit, 1     , 2 , 0.00001\n",
-            "line 3",
-            "amount exceeds four decimal places",
-        ),
-    ] {
-        let output = process(input);
-        assert!(!output.status.success());
-        assert!(output.stdout.is_empty());
-        let diagnostics = String::from_utf8_lossy(&output.stderr);
-        assert!(diagnostics.contains(line), "{diagnostics}");
-        assert!(diagnostics.contains(problem), "{diagnostics}");
-    }
-}
-
-#[test]
 fn cli_requires_exactly_one_input_path() {
     let file = InputFile::new("type,client,tx,amount\n");
     for arguments in [vec![], vec![&file.path, &file.path]] {
@@ -426,6 +401,6 @@ fn cli_requires_exactly_one_input_path() {
             .expect("failed to execute CLI");
         assert!(!output.status.success());
         assert!(output.stdout.is_empty());
-        assert!(String::from_utf8_lossy(&output.stderr).contains("usage:"));
+        assert!(String::from_utf8_lossy(&output.stderr).contains(&Error::Usage.to_string()));
     }
 }

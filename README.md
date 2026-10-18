@@ -49,7 +49,7 @@ The library separates transaction processing from CSV and stream access:
 | `Engine::default()` and `apply(transaction)` | Process records incrementally while preserving account and transaction state |
 | `write_clients(&clients, output)` | Serialize an account map to any `Write` output |
 
-Pipeline functions return `anyhow::Result`. Error context preserves the operation and source error. Format errors with `{error:#}` to include the complete cause chain. `MoneyError` and `TransactionError` remain separate types.
+Pipeline functions return `anyhow::Result`. The `Error` enum in `src/error.rs` identifies the operation, CSV line, or input path. Inspect it with `error.downcast_ref::<Error>()`; amount errors also support `error.downcast_ref::<MoneyError>()`. Source errors remain available through the error chain. Format errors with `{error:#}` to include the complete chain. `MoneyError` and `TransactionError` remain separate types.
 
 For memory streams:
 

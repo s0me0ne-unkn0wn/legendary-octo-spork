@@ -16,8 +16,8 @@
 - Only deposits create accounts and history entries. Withdrawals on missing accounts return InsufficientFunds. The engine assumes unique deposit IDs and performs no duplicate ID validation.
 - ClientInfo derives Default and contains pub(crate) total, on_hold, and lock fields. It has no methods or duplicate client ID. The engine checks balance calculations before direct field assignments; CSV output uses map keys and calculates available funds from total minus on_hold.
 - Amounts use Money(i64) and exact four-place integer arithmetic. Money derives Default with value zero. The user requested removal of generic money values. Preserve generic input and output streams.
-- Pipeline functions return anyhow::Result and preserve operation context and source errors. Format errors with {error:#} for the complete cause chain. MoneyError and TransactionError remain typed.
-- Tests cover CLI behavior, domain state transitions, amount limits, read interruptions, and read/write/flush errors. Both debug and release profiles pass 31 integration tests.
+- Pipeline functions return anyhow::Result and use the Error enum from src/error.rs as typed operation context. Downcast to Error or MoneyError without parsing messages. Format errors with {error:#} for the complete cause chain. MoneyError and TransactionError remain typed. CSV I/O errors contain io::Error in csv::ErrorKind::Io rather than exposing it through source().
+- Tests cover CLI behavior, domain state transitions, amount limits, read interruptions, and read/write/flush errors. Both debug and release profiles pass 30 integration tests.
 - The user requested removing redundant tests. Avoid repeated stream smoke tests, bulk arithmetic checks that duplicate CLI and benchmark coverage, and tests of library I/O behavior. Retain tests of transaction rules, boundaries, retry logic, and error propagation.
 - benches/throughput.rs validates complete CSV output. Task measurements exist in .agent/worklog/benchmark.json and .agent/worklog/throughput.json.
 - README.md documents API examples, transaction behavior, memory growth, benchmark results, and commands.
