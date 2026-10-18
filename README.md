@@ -87,3 +87,36 @@ Separate CLI measurements use files with one million and four million rows, with
 | Withdrawals after one initial deposit | 4,000,000 | 0.609 s | 6.56 million | 2.2 MiB |
 | Repeated dispute/resolve on one deposit | 1,000,000 | 0.115 s | 8.69 million | 2.2 MiB |
 | Repeated dispute/resolve on one deposit | 4,000,000 | 0.406 s | 9.86 million | 2.2 MiB |
+
+## Chargeback history comparison
+
+On 2026-10-18, Rust 1.94.1 on an Intel Core i9-13900K, with 1,024 clients (`1..=1024`).
+
+Two implementation branches:
+
+- `perf/chargeback-records`: remove only the deposit that completes a chargeback.
+- `perf/client-deposit-index`: store deposit IDs per client and remove all of that account's deposit history when a chargeback locks it. Account balances and funds on hold remain in the account record.
+
+Each mixed group contains a deposit, withdrawal, dispute, and resolve. Each chargeback has a preceding dispute. The operation counts below include all of these records exactly.
+
+- At EOF: distribute groups across clients, then charge back all 1,024 accounts.
+- Half during input: process clients in batches; charge back the first 512 accounts after their batches and leave the remaining accounts open.
+- All during input: process clients in batches and charge back each account after its batch.
+
+Each table entry uses three fresh release CLI processes reading the same CSV file and writing account CSV to a file. The variant order alternates between runs. Throughput uses median elapsed time, including startup and file I/O. Peak process memory uses the maximum Linux `VmHWM` sample at 1 ms intervals. Input generation and complete output validation run outside the CLI process; all 54 runs validate every account and empty diagnostics.
+
+| Chargeback pattern | Operations | Peak memory without index | Peak memory with index | Ops/second without index | Ops/second with index |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| At EOF | 1,000,000 | 21.1 MiB | 21.9 MiB | 6.03 million | 5.66 million |
+| Half during input | 1,000,000 | 20.9 MiB | 11.9 MiB | 5.99 million | 6.14 million |
+| All during input | 1,000,000 | 21.1 MiB | 2.5 MiB | 5.90 million | 6.26 million |
+| At EOF | 10,000,000 | 152.3 MiB | 160.2 MiB | 6.27 million | 5.77 million |
+| Half during input | 10,000,000 | 152.3 MiB | 82.2 MiB | 6.12 million | 6.52 million |
+| All during input | 10,000,000 | 152.2 MiB | 2.6 MiB | 6.20 million | 6.64 million |
+| At EOF | 100,000,000 | 1,202.4 MiB | 1,264.4 MiB | 5.88 million | 5.33 million |
+| Half during input | 100,000,000 | 1,202.4 MiB | 631.3 MiB | 5.99 million | 6.39 million |
+| All during input | 100,000,000 | 1,202.2 MiB | 4.5 MiB | 6.01 million | 6.79 million |
+
+At 100 million operations, the index adds 5.2% peak memory and reduces throughput 9.5% with chargebacks at EOF. With half the accounts closing during input, it reduces peak memory 47.5%. With every account closing during input, peak memory decreases from 1,202.2 MiB to 4.5 MiB.
+
+The index benefits the measured workloads where chargebacks remove deposit histories before later deposits arrive. The EOF and all-batched patterns both have 1,024 chargebacks, so timing and history size per account determine the saving. Hash-table capacity grows in steps and remains available for reuse after removal. Open accounts still require their full deposit history. The all-batched case retains one client batch at a time, and that batch grows with the total operation count in this comparison.
