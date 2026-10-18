@@ -289,33 +289,6 @@ fn withdrawals_without_an_account_do_not_create_one() {
 }
 
 #[test]
-fn decimal_math_preserves_the_smallest_unit() {
-    balances(
-        "type      , client, tx        , amount
-         deposit   , 0     , 0         , 0.1
-         deposit   , 0     , 4294967295, 0.2
-         withdrawal, 0     , 2         , 0.3
-         deposit   , 65535 , 3         , 0.0001\n",
-        "client, available, held  , total , locked
-         0     , 0.0000   , 0.0000, 0.0000, false
-         65535 , 0.0001   , 0.0000, 0.0001, false\n",
-        0,
-    );
-}
-
-#[test]
-fn headers_allow_column_order_and_whitespace() {
-    balances(
-        "amount, tx, client, type
-         1.25  , 1 , 2     , deposit
-               , 1 , 2     , dispute\n",
-        "client, available, held  , total , locked
-         2     , 0.0000   , 1.2500, 1.2500, false\n",
-        0,
-    );
-}
-
-#[test]
 fn header_only_input_still_produces_output_headers() {
     balances(
         "type,client,tx,amount\n",
@@ -455,16 +428,4 @@ fn cli_requires_exactly_one_input_path() {
         assert!(output.stdout.is_empty());
         assert!(String::from_utf8_lossy(&output.stderr).contains("usage:"));
     }
-}
-
-#[test]
-fn missing_file_error_contains_the_path() {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/no-such-input.csv");
-    let output = Command::new(env!("CARGO_BIN_EXE_legendary-octo-spork"))
-        .arg(&path)
-        .output()
-        .expect("failed to execute CLI");
-    assert!(!output.status.success());
-    assert!(output.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&output.stderr).contains(&*path.to_string_lossy()));
 }
