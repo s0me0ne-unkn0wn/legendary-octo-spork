@@ -8,6 +8,7 @@ pub struct ClientInfo {
     pub(crate) total: Money,
     pub(crate) on_hold: Money,
     pub(crate) lock: bool,
+    pub(crate) deposit_ids: Vec<TxId>,
 }
 
 #[derive(Debug)]
@@ -103,6 +104,7 @@ impl Engine {
             .ok_or(TransactionError::Overflow)?;
         account.total = total;
         if deposit {
+            account.deposit_ids.push(transaction.id);
             self.deposits.insert(
                 transaction.id,
                 Deposit {
@@ -169,7 +171,9 @@ impl Engine {
                 account.total = total;
                 account.on_hold = on_hold;
                 account.lock = true;
-                self.deposits.remove(&transaction.id);
+                for id in std::mem::take(&mut account.deposit_ids) {
+                    self.deposits.remove(&id);
+                }
             }
             (TxType::Dispute, true) => return Err(TransactionError::DisputeConflict),
             _ => return Err(TransactionError::NoDispute),
@@ -183,7 +187,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn chargeback_removes_deposit_history() {
+    fn chargeback_removes_client_deposit_history() {
         let mut engine = Engine::default();
         for (client, id, ty) in [
             (1, 1, TxType::Deposit(Money(10_000))),
@@ -202,6 +206,8 @@ mod tests {
         }
         assert!(!engine.deposits.contains_key(&TxId(1)));
         assert!(engine.deposits.contains_key(&TxId(2)));
-        assert!(engine.deposits.contains_key(&TxId(3)));
+        assert!(!engine.deposits.contains_key(&TxId(3)));
+        assert!(engine.clients[&ClientId(1)].deposit_ids.is_empty());
+        assert_eq!(engine.clients[&ClientId(2)].deposit_ids, [TxId(2)]);
     }
 }
