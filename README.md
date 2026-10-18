@@ -5,7 +5,7 @@ Legendary Octo Spork is a novel transaction processing engine! It aggregates inc
 # Usage example
 
 ```sh
-cargo run --r -- input.csv > accounts.csv
+cargo run -r -- input.csv > accounts.csv
 ```
 
 Given the input:
