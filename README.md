@@ -1,14 +1,14 @@
-# legendary-octo-spork
+# Legendary Octo Spork
 
-Process account transactions from a CSV file with exact integer arithmetic and four decimal places. The CLI supports file processing; network connections are a possible future use of the library API.
+Legendary Octo Spork is a novel transaction processing engine! It aggregates incoming CSV transaction history into the account balance report, taking care of deposites, withdrawals, disputes and chargebacks.
+
+# Usage example
 
 ```sh
-cargo run --release -- input.csv > accounts.csv
+cargo run --r -- input.csv > accounts.csv
 ```
 
-The CLI accepts exactly one file path. It writes account CSV to stdout and transaction errors to stderr. Invalid CSV or an I/O failure produces a nonzero exit status. The processor reads the complete input before it writes account output.
-
-Input requires the columns `type,client,tx,amount` exactly once, in any order. The parser trims surrounding whitespace. Deposits and withdrawals require an amount. Dispute, resolve, and chargeback records use only `type`, `client`, and `tx`; they can omit a trailing amount field or leave it empty. Any supplied amount on these records has no effect.
+Given the input:
 
 ```csv
 type,client,tx,amount
@@ -19,7 +19,7 @@ resolve,1,1
 deposit,2,3,1
 ```
 
-This input produces:
+the following output is produced:
 
 ```csv
 client,available,held,total,locked
@@ -27,29 +27,19 @@ client,available,held,total,locked
 2,1.0000,0.0000,1.0000,false
 ```
 
-Output row order is unspecified. Amounts use exactly four decimal places. Client IDs use `u16`; transaction IDs use `u32`. Both types accept zero. Deposit and withdrawal amounts require integer digits and optionally a decimal point with one to four fractional digits. The processor rejects excess precision, exponent notation, and amounts outside the numeric range. It never rounds or converts amounts through floating point.
+# Design bits
 
-| Operation | Requirements | Account changes |
-| --- | --- | --- |
-| Deposit | Nonnegative amount | Create the account if necessary; increase total and available |
-| Withdrawal | Existing account; nonnegative amount; sufficient available funds | Decrease total and available |
-| Dispute | The same client's deposit without an active dispute | Increase funds on hold; decrease available |
-| Resolve | The same client's deposit with an active dispute | Decrease funds on hold; increase available |
-| Chargeback | The same client's deposit with an active dispute | Decrease total and funds on hold; lock the account |
+* Money values are `i64` and stored as fixed point with 4-digit precision. The limits of `i64` are orders of magnitute higher than the total issuance of U.S. dollars expressed in 1/100s of cants, or the total issuance of Bitcoin expressed in satoshi. Whenever wider limits are needed, the inner type may be easily replaced with `i128` for the price of slower arithmetics.
+* Inexecutable transactions (containing wrong data, or of invalid format, or requesting operation outside of the account limits) are logged to `stderr`.
+* Deposits are assumed to be in fiat money, and withdrawals are to blockchain. Thus, only deposits are deemed disputable.
+* For that matter, the withdrawals are not memorized by the engine for the sake of memory optimization. A trade-off is we cannot check for duplicate transaction IDs for withdrawals, but the IDs are guaranteed to be uniq anyway.
+* Charging back a deposit due to a dispute may put an account to negative total. Writing off losses is up to the financial department, we're purely adding numbers here and not making any financial decisions.
+* Currently, a chargeback locks account from all the operations. It's arguable if deposits should be still allowed for the sake of minimizing losses.
+* A withdrawal without a previous deposit does not create an empty client account. Reasoning: withdrawing from a non-existent account is an inexecutable transaction. Inexecutable transactions must be idempotent for the sake of data consistency.
+* CSV processing logic is reusable with any other stream implementing `Read`.
+* Lower level transaction processing logic is generalized to ingest data from arbitrary parsers providing transaction data, therefor it's reusable as well.
 
-A resolve permits another dispute on the same deposit. Withdrawals do not support dispute, resolve, or chargeback. Disputes can make available funds negative after a withdrawal. A chargeback can make total funds negative and prevents all later activity on the account, including changes to other disputes.
-
-Deposit IDs have global scope, and the processor assumes that input deposit IDs are unique. It performs no duplicate ID validation. Only deposits create accounts. A withdrawal on a missing account returns an error without creating an account. The engine also rejects references to another client's deposit, invalid state changes, negative amounts, and arithmetic overflow. These errors leave balances and deposit state unchanged; the processor reports each error and continues. Disputes, resolves, and chargebacks always use the deposit's full amount.
-
-The library separates transaction processing from CSV and stream access:
-
-| API | Use |
-| --- | --- |
-| `process_csv(input, output, diagnostics)` | CSV pipeline over any `Read` input and `Write` outputs, using `i64` amounts |
-| `Engine::default()` and `apply(transaction)` | Process records incrementally while preserving account and transaction state |
-| `write_clients(&clients, output)` | Serialize an account map to any `Write` output |
-
-Pipeline functions return `anyhow::Result`. The `Error` enum in `src/error.rs` identifies the operation, CSV line, or input path. Inspect it with `error.downcast_ref::<Error>()`; amount errors also support `error.downcast_ref::<MoneyError>()`. Source errors remain available through the error chain. Format errors with `{error:#}` to include the complete chain. `MoneyError` and `TransactionError` remain separate types.
+# Examples of usage with other stream types
 
 For memory streams:
 
@@ -76,29 +66,11 @@ fn process_connection(mut stream: TcpStream) -> anyhow::Result<()> {
 
 The peer must finish its input, for example with `shutdown(Shutdown::Write)`, before reading the account response. These APIs use blocking I/O.
 
-`Money(i64)` stores minor units, so `Money(12_345)` represents `1.2345`. Its `checked_add` and `checked_sub` methods accept another `Money` and return `Option<Money>`, with `None` on overflow. Balance updates and account output use these methods; parsing uses checked `i64` arithmetic. `ClientId`, `TxId`, and `Money` implement `Deref`. Transaction variants require an amount for deposits and withdrawals. Account fields have crate visibility, and the engine validates balance calculations before assigning fields. Client IDs exist as account map keys; output calculates available funds as total minus funds on hold.
+# Benchmarks
 
-The processor does not collect input records. Its CSV loop reuses one byte record and borrows amount text from that record. It uses 64 KiB buffers for input, output, and diagnostics. The reader retries interrupted reads before CSV parsing. Processing takes expected linear time in the number of records. Memory grows with client count, successful deposits, and the largest CSV record. The engine stores deposit amounts, owners, and dispute flags. Withdrawals create no history entries, and repeated dispute and resolve operations update the same deposit.
+The [Criterion](https://docs.rs/criterion/0.8.2/criterion/) benchmark covers one million unique deposits and about one million mixed records, including all five transaction types.
 
-Run checks and the throughput benchmark with:
-
-```sh
-cargo test --locked
-cargo test --release --locked
-cargo fmt --all -- --check
-cargo clippy --all-targets --locked -- -D warnings
-cargo bench --bench throughput --locked
-```
-
-The [Criterion](https://docs.rs/criterion/0.8.2/criterion/) benchmark covers one million unique deposits and about one million mixed records, including all five transaction types. It generates input and checks complete account output and empty diagnostics before measurement. Timed iterations include CSV parsing, processing, account and history allocation, CSV output, and cleanup. Each workload uses a three-second warmup, 30 samples, and a ten-second target measurement time. Criterion reports records/second, input MiB/second, and 95% confidence intervals, and saves results under `target/criterion/`.
-
-Adjust input size with `TX_BENCH_ROWS`. Use Criterion arguments to change sampling or select a workload, for example:
-
-```sh
-cargo bench --bench throughput --locked -- deposits --sample-size 50 --measurement-time 20
-```
-
-On 2026-10-18, Criterion 0.8.2 with Rust 1.94.1 on an Intel Core i9-13900K in this Linux container produced these mean estimates:
+On 2026-10-18, Criterion 0.8.2 with Rust 1.94.1 on an Intel Core i9-13900K:
 
 | In-memory CSV workload | Records | Mean time | 95% time interval | Records/second | Input MiB/second |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -115,5 +87,3 @@ Separate CLI measurements use files with one million and four million rows, with
 | Withdrawals after one initial deposit | 4,000,000 | 0.609 s | 6.56 million | 2.2 MiB |
 | Repeated dispute/resolve on one deposit | 1,000,000 | 0.115 s | 8.69 million | 2.2 MiB |
 | Repeated dispute/resolve on one deposit | 4,000,000 | 0.406 s | 9.86 million | 2.2 MiB |
-
-The withdrawal record counts include the initial deposit. These measurements describe this environment; the benchmark does not enforce a hardware-dependent timing limit. History growth accounts for the memory increase with unique deposits. Withdrawals and repeated control records do not increase history size.
