@@ -28,6 +28,60 @@ fn withdrawals_on_missing_accounts_return_errors_without_clients() {
     }
 }
 
+#[test]
+fn account_lock_rejects_activity_after_history_removal() {
+    let mut engine = Engine::default();
+    for (client, id, ty) in [
+        (1, 1, TxType::Deposit(Money(10_000))),
+        (2, 2, TxType::Deposit(Money(20_000))),
+        (1, 1, TxType::Dispute),
+        (1, 1, TxType::Chargeback),
+    ] {
+        engine
+            .apply(Transaction {
+                client_id: ClientId(client),
+                id: TxId(id),
+                ty,
+            })
+            .expect("failed to process chargeback test");
+    }
+    for id in [1, 99] {
+        for ty in [
+            TxType::Deposit(Money(1)),
+            TxType::Withdrawal(Money(0)),
+            TxType::Dispute,
+            TxType::Resolve,
+            TxType::Chargeback,
+        ] {
+            assert_eq!(
+                engine.apply(Transaction {
+                    client_id: ClientId(1),
+                    id: TxId(id),
+                    ty,
+                }),
+                Err(TransactionError::AccountLock)
+            );
+        }
+    }
+    assert_eq!(
+        engine.apply(Transaction {
+            client_id: ClientId(2),
+            id: TxId(1),
+            ty: TxType::Dispute,
+        }),
+        Err(TransactionError::UnknownTransaction)
+    );
+    for ty in [TxType::Dispute, TxType::Resolve, TxType::Dispute] {
+        engine
+            .apply(Transaction {
+                client_id: ClientId(2),
+                id: TxId(2),
+                ty,
+            })
+            .expect("chargeback changes another client's deposit");
+    }
+}
+
 struct InterruptReader<Input> {
     input: Input,
     interrupt: bool,

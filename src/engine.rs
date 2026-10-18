@@ -116,6 +116,10 @@ impl Engine {
     }
 
     fn apply_control(&mut self, transaction: Transaction) -> Result<(), TransactionError> {
+        let account = self.clients.get_mut(&transaction.client_id);
+        if account.as_ref().is_some_and(|account| account.lock) {
+            return Err(TransactionError::AccountLock);
+        }
         let deposit = self
             .deposits
             .get_mut(&transaction.id)
@@ -123,13 +127,7 @@ impl Engine {
         if deposit.client_id != transaction.client_id {
             return Err(TransactionError::ClientMismatch);
         }
-        let account = self
-            .clients
-            .get_mut(&transaction.client_id)
-            .expect("transaction account missing");
-        if account.lock {
-            return Err(TransactionError::AccountLock);
-        }
+        let account = account.expect("transaction account missing");
         let amount = deposit.amount;
         match (transaction.ty, deposit.dispute) {
             (TxType::Dispute, false) => {
@@ -171,11 +169,39 @@ impl Engine {
                 account.total = total;
                 account.on_hold = on_hold;
                 account.lock = true;
-                deposit.dispute = false;
+                self.deposits.remove(&transaction.id);
             }
             (TxType::Dispute, true) => return Err(TransactionError::DisputeConflict),
             _ => return Err(TransactionError::NoDispute),
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn chargeback_removes_deposit_history() {
+        let mut engine = Engine::default();
+        for (client, id, ty) in [
+            (1, 1, TxType::Deposit(Money(10_000))),
+            (1, 3, TxType::Deposit(Money(30_000))),
+            (2, 2, TxType::Deposit(Money(20_000))),
+            (1, 1, TxType::Dispute),
+            (1, 1, TxType::Chargeback),
+        ] {
+            engine
+                .apply(Transaction {
+                    client_id: ClientId(client),
+                    id: TxId(id),
+                    ty,
+                })
+                .expect("failed to process chargeback history test");
+        }
+        assert!(!engine.deposits.contains_key(&TxId(1)));
+        assert!(engine.deposits.contains_key(&TxId(2)));
+        assert!(engine.deposits.contains_key(&TxId(3)));
     }
 }
