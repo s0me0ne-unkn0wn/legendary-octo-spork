@@ -90,24 +90,30 @@ cargo clippy --all-targets --locked -- -D warnings
 cargo bench --bench throughput --locked
 ```
 
-The benchmark generates input before timing, performs one warmup, and reports the median of five runs. Every run checks all account rows and requires an empty diagnostic stream. It covers one million unique deposits and about one million mixed records, including all five transaction types. Adjust its size with `TX_BENCH_ROWS` and its repetitions with `TX_BENCH_ROUNDS`.
+The [Criterion](https://docs.rs/criterion/0.8.2/criterion/) benchmark covers one million unique deposits and about one million mixed records, including all five transaction types. It generates input and checks complete account output and empty diagnostics before measurement. Timed iterations include CSV parsing, processing, account and history allocation, CSV output, and cleanup. Each workload uses a three-second warmup, 30 samples, and a ten-second target measurement time. Criterion reports records/second, input MiB/second, and 95% confidence intervals, and saves results under `target/criterion/`.
 
-On 2026-10-17, Rust 1.94.1 on an Intel Core i9-13900K in this Linux container produced:
+Adjust input size with `TX_BENCH_ROWS`. Use Criterion arguments to change sampling or select a workload, for example:
 
-| In-memory CSV workload | Records | Median time | Records/second | Input MiB/second |
-| --- | ---: | ---: | ---: | ---: |
-| Unique deposits, 1,024 clients | 1,000,000 | 0.201 s | 4.97 million | 122.20 |
-| Deposits, withdrawals, disputes, resolves, and chargebacks | 1,002,048 | 0.154 s | 6.52 million | 142.73 |
+```sh
+cargo bench --bench throughput --locked -- deposits --sample-size 50 --measurement-time 20
+```
+
+On 2026-10-18, Criterion 0.8.2 with Rust 1.94.1 on an Intel Core i9-13900K in this Linux container produced these mean estimates:
+
+| In-memory CSV workload | Records | Mean time | 95% time interval | Records/second | Input MiB/second |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Unique deposits, 1,024 clients | 1,000,000 | 170.37 ms | 170.22–170.53 ms | 5.87 million | 144.45 |
+| Deposits, withdrawals, disputes, resolves, and chargebacks | 1,002,048 | 152.55 ms | 152.10–153.02 ms | 6.57 million | 143.70 |
 
 Separate CLI measurements use files with one million and four million rows, with three runs per input and complete output validation. Linux `VmHWM` samples track peak process memory after startup:
 
 | CLI workload | Records | Median time | Records/second | Peak memory |
 | --- | ---: | ---: | ---: | ---: |
-| Unique deposits, 1,024 clients | 1,000,000 | 0.213 s | 4.70 million | 77.4 MiB |
-| Unique deposits, 1,024 clients | 4,000,000 | 0.856 s | 4.67 million | 302.3 MiB |
-| Withdrawals after one initial deposit | 1,000,000 | 0.159 s | 6.28 million | 2.2 MiB |
-| Withdrawals after one initial deposit | 4,000,000 | 0.605 s | 6.61 million | 2.3 MiB |
-| Repeated dispute/resolve on one deposit | 1,000,000 | 0.112 s | 8.92 million | 2.2 MiB |
-| Repeated dispute/resolve on one deposit | 4,000,000 | 0.412 s | 9.70 million | 2.3 MiB |
+| Unique deposits, 1,024 clients | 1,000,000 | 0.209 s | 4.78 million | 77.3 MiB |
+| Unique deposits, 1,024 clients | 4,000,000 | 0.838 s | 4.77 million | 302.4 MiB |
+| Withdrawals after one initial deposit | 1,000,000 | 0.160 s | 6.26 million | 2.2 MiB |
+| Withdrawals after one initial deposit | 4,000,000 | 0.609 s | 6.56 million | 2.2 MiB |
+| Repeated dispute/resolve on one deposit | 1,000,000 | 0.115 s | 8.69 million | 2.2 MiB |
+| Repeated dispute/resolve on one deposit | 4,000,000 | 0.406 s | 9.86 million | 2.2 MiB |
 
 The withdrawal record counts include the initial deposit. These measurements describe this environment; the benchmark does not enforce a hardware-dependent timing limit. History growth accounts for the memory increase with unique deposits. Withdrawals and repeated control records do not increase history size.

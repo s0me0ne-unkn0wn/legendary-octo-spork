@@ -10,7 +10,7 @@
 - The private CSV processing function uses the name process_txs after the user requested renaming read_clients. Do not export it as a replacement iterator API.
 - process_csv uses a direct read_byte_record loop with one reusable byte record and borrowed amount text. The user requested removal of the CsvTransactions wrapper. Flush diagnostics before propagating CSV errors and before account output.
 - CSV input uses type,client,tx,amount. The transaction column is tx.
-- Account output order is unspecified after the user's b3657dc optimization. Compare CSV headers and complete record lists without row order in tests and benchmarks. Preserve duplicate counts and exact amount formatting; validation sorting must run after benchmark timing.
+- Account output order is unspecified after the user's b3657dc optimization. Compare CSV headers and complete record lists without row order in tests and benchmarks. Preserve duplicate counts and exact amount formatting; validation sorting must run outside benchmark timing.
 - CSV test fixtures use aligned multiline tables. Expected account tables include headers, and malformed cases have descriptions. Preserve field counts, trailing newlines, and diagnostic line positions when reformatting fixtures.
 - Control records use the deposit ID and full deposit amount. They can omit a trailing amount field; the parser ignores any control amount.
 - Only deposits create accounts and history entries. Withdrawals on missing accounts return InsufficientFunds. The engine assumes unique deposit IDs and performs no duplicate ID validation.
@@ -19,5 +19,5 @@
 - Pipeline functions return anyhow::Result and use the Error enum from src/error.rs as typed operation context. Downcast to Error or MoneyError without parsing messages. Format errors with {error:#} for the complete cause chain. MoneyError and TransactionError remain typed. CSV I/O errors contain io::Error in csv::ErrorKind::Io rather than exposing it through source().
 - Tests cover CLI behavior, domain state transitions, amount limits, read interruptions, and read/write/flush errors. Both debug and release profiles pass 30 integration tests.
 - The user requested removing redundant tests. Avoid repeated stream smoke tests, bulk arithmetic checks that duplicate CLI and benchmark coverage, and tests of library I/O behavior. Retain tests of transaction rules, boundaries, retry logic, and error propagation.
-- benches/throughput.rs validates complete CSV output. Task measurements exist in .agent/worklog/benchmark.json and .agent/worklog/throughput.json.
+- benches/throughput.rs uses Criterion 0.8.2 as a development dependency. It validates complete CSV output and empty diagnostics before measurement. Criterion times the complete pipeline including cleanup, with a three-second warmup, 30 samples, and a ten-second measurement target. TX_BENCH_ROWS controls input size; Criterion arguments control sampling. Task measurements exist in .agent/worklog/benchmark.json and .agent/worklog/throughput.json.
 - README.md documents API examples, transaction behavior, memory growth, benchmark results, and commands.

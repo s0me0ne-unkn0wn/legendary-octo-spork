@@ -1,11 +1,12 @@
 #[path = "../tests/common/mod.rs"]
 mod common;
 
-use std::error::Error;
 use std::fmt::Write as _;
-use std::time::{Duration, Instant};
+use std::hint::black_box;
+use std::time::Duration;
 
 use common::assert_accounts;
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use legendary_octo_spork::{Money, process_csv};
 
 const CLIENT_COUNT: u32 = 1024;
@@ -81,47 +82,42 @@ fn mixed(groups: u32) -> Workload {
     }
 }
 
-fn execute(workload: &Workload) -> Duration {
+fn execute(workload: &Workload) -> (Vec<u8>, Vec<u8>) {
     let mut output = Vec::new();
     let mut diagnostics = Vec::new();
-    let start = Instant::now();
-    process_csv(workload.input.as_bytes(), &mut output, &mut diagnostics)
-        .expect("failed to process benchmark workload");
-    let duration = start.elapsed();
-    assert_accounts(&output, &workload.output);
-    assert!(diagnostics.is_empty(), "invalid benchmark transactions");
-    duration
+    process_csv(
+        black_box(workload.input.as_bytes()),
+        &mut output,
+        &mut diagnostics,
+    )
+    .expect("failed to process benchmark workload");
+    (output, diagnostics)
 }
 
-fn measure(workload: Workload, rounds: usize) {
-    execute(&workload);
-    let mut durations: Vec<_> = (0..rounds).map(|_| execute(&workload)).collect();
-    durations.sort_unstable();
-    let seconds = durations[durations.len() / 2].as_secs_f64();
-    println!(
-        "{}: rows={} median_seconds={seconds:.6} rows_per_second={:.0} mib_per_second={:.2}",
-        workload.label,
-        workload.rows,
-        workload.rows as f64 / seconds,
-        workload.input.len() as f64 / (1024.0 * 1024.0) / seconds
-    );
-}
-
-fn main() -> Result<(), Box<dyn Error>> {
-    let rows: u32 = std::env::var("TX_BENCH_ROWS")
-        .ok()
-        .map(|value| value.parse())
-        .transpose()?
-        .unwrap_or(1_000_000);
-    let rounds: usize = std::env::var("TX_BENCH_ROUNDS")
-        .ok()
-        .map(|value| value.parse())
-        .transpose()?
-        .unwrap_or(5);
-    if rows == 0 || rounds == 0 {
-        return Err("benchmark rows and rounds must exceed zero".into());
+fn throughput(criterion: &mut Criterion) {
+    let rows: u32 = std::env::var("TX_BENCH_ROWS").map_or(1_000_000, |value| {
+        value.parse().expect("invalid TX_BENCH_ROWS")
+    });
+    assert!(rows > 0, "TX_BENCH_ROWS must exceed zero");
+    let mut group = criterion.benchmark_group("csv");
+    for workload in [deposits(rows), mixed((rows / 4).max(1))] {
+        let (output, diagnostics) = execute(&workload);
+        assert_accounts(&output, &workload.output);
+        assert!(diagnostics.is_empty(), "invalid benchmark transactions");
+        group.throughput(Throughput::ElementsAndBytes {
+            elements: workload.rows,
+            bytes: workload.input.len() as u64,
+        });
+        group.bench_function(BenchmarkId::new(workload.label, workload.rows), |bencher| {
+            bencher.iter(|| execute(&workload));
+        });
     }
-    measure(deposits(rows), rounds);
-    measure(mixed((rows / 4).max(1)), rounds);
-    Ok(())
+    group.finish();
 }
+
+criterion_group! {
+    name = benches;
+    config = Criterion::default().sample_size(30).measurement_time(Duration::from_secs(10));
+    targets = throughput
+}
+criterion_main!(benches);
