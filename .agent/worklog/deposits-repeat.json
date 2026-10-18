@@ -1,0 +1,40 @@
+{
+  "date_utc": "2026-10-18T12:58:09.481751+00:00",
+  "binary": {
+    "branch": "master",
+    "commit": "04d5518fa535a9e13bfb613953dfb15dfd035e28",
+    "binary_sha256": "a5f2386fbbee3aef6c0689d5532f03d3270b79d42f247b5a2a56b02dce4eaa9f",
+    "build": "cargo build --release --locked"
+  },
+  "rows": 100000000,
+  "input_sha256": "6ce65bee1b23145699a2536e658457da352355b9d56124f21b44d11eebdd80bb",
+  "sample": {
+    "seconds": 26.587671399931423,
+    "peak_rss_kib": 5166072,
+    "resource_peak_rss_kib": 5166072
+  },
+  "rows_per_second": 3761141.714736926,
+  "mib_per_second": 99.74403648278945,
+  "throughput_change_pct": 2.7776376876461173,
+  "memory_before": {
+    "available_kib": 87034848,
+    "swap_in_pages": 0,
+    "swap_out_pages": 0,
+    "some_pressure_us": 1711461,
+    "full_pressure_us": 1669614
+  },
+  "memory_after": {
+    "available_kib": 87118744,
+    "swap_in_pages": 0,
+    "swap_out_pages": 0,
+    "some_pressure_us": 1711461,
+    "full_pressure_us": 1669614
+  },
+  "counter_changes": {
+    "swap_in_pages": 0,
+    "swap_out_pages": 0,
+    "some_pressure_us": 0,
+    "full_pressure_us": 0
+  },
+  "readme_sha256": "c8d93fd23bb1b91566a9f505b102c5f38d031c4e4ebcba9c37e6b4f7e65476c8"
+}

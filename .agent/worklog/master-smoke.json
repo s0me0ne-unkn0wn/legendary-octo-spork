@@ -1,0 +1,120 @@
+{
+  "start_utc": "2026-10-18T12:28:24.680732+00:00",
+  "rustc": "rustc 1.94.1 (e408947bf 2026-03-25)",
+  "cpu": "13th Gen Intel(R) Core(TM) i9-13900K",
+  "kernel": "Linux 6.18.49-1-MANJARO",
+  "clients": 1024,
+  "client_min": 1,
+  "client_max": 1024,
+  "rounds": 1,
+  "method": "median fresh CLI process time; maximum child VmHWM sampled at 1 ms; complete output validation outside timing",
+  "binary": {
+    "branch": "master",
+    "commit": "04d5518fa535a9e13bfb613953dfb15dfd035e28",
+    "binary_sha256": "a5f2386fbbee3aef6c0689d5532f03d3270b79d42f247b5a2a56b02dce4eaa9f",
+    "build": "cargo build --release --locked"
+  },
+  "results": [
+    {
+      "pattern": "deposits",
+      "rows": 10000,
+      "deposits": 10000,
+      "chargebacks": 0,
+      "input_bytes": 238057,
+      "input_sha256": "8c4cc42865c07056188c030bf00fdf7e10b9fddae7f529fefe723bb9b09d7224",
+      "expected_output_sha256": "80d9201f66da17cd3bbc5563d0d441146bbe15e363e38c194f42f8b015af2d10",
+      "samples": [
+        {
+          "seconds": 0.004880498046986759,
+          "peak_rss_kib": 3044,
+          "resource_peak_rss_kib": 25252
+        }
+      ],
+      "median_seconds": 0.004880498046986759,
+      "rows_per_second": 2048971.2123077367,
+      "mib_per_second": 46.51755713351658,
+      "peak_rss_kib": 3044
+    },
+    {
+      "pattern": "mixed",
+      "rows": 10000,
+      "deposits": 2500,
+      "chargebacks": 0,
+      "input_bytes": 209206,
+      "input_sha256": "89d23edabd0263b291d25910ed4a026a0ab74060e2e4df3133059e7b83ae6d1c",
+      "expected_output_sha256": "2810dfef3e4086fb2a660a753018ea2307ccde5e18b5792fe6d44f0e8df73cb7",
+      "samples": [
+        {
+          "seconds": 0.004615887999534607,
+          "peak_rss_kib": 2576,
+          "resource_peak_rss_kib": 25252
+        }
+      ],
+      "median_seconds": 0.004615887999534607,
+      "rows_per_second": 2166430.3815448387,
+      "mib_per_second": 43.22340339674659,
+      "peak_rss_kib": 2576
+    },
+    {
+      "pattern": "late",
+      "rows": 10000,
+      "deposits": 1988,
+      "chargebacks": 1024,
+      "input_bytes": 203740,
+      "input_sha256": "c7b1b6f74d5a42913fe40f7a7ca34a57099ca3d2aed96881a15b8e7c7835c25b",
+      "expected_output_sha256": "8ca793276fb0c46346590a4e17f4b63daa2e89bf3ac0338f0306a6b33e283128",
+      "samples": [
+        {
+          "seconds": 0.004497469053603709,
+          "peak_rss_kib": 2480,
+          "resource_peak_rss_kib": 25252
+        }
+      ],
+      "median_seconds": 0.004497469053603709,
+      "rows_per_second": 2223472.775646394,
+      "mib_per_second": 43.20243294813121,
+      "peak_rss_kib": 2480
+    },
+    {
+      "pattern": "half",
+      "rows": 10000,
+      "deposits": 2244,
+      "chargebacks": 512,
+      "input_bytes": 205808,
+      "input_sha256": "b3dfbabaf6ed0aa5b943f3429ad7c89a1540fe88a98c48cb890bc055c1dcd3f9",
+      "expected_output_sha256": "7576fc4213e321b6e098b2273985a3326d098dd196c550ab5f3ffcbc3a9847b2",
+      "samples": [
+        {
+          "seconds": 0.005760745028965175,
+          "peak_rss_kib": 2472,
+          "resource_peak_rss_kib": 25252
+        }
+      ],
+      "median_seconds": 0.005760745028965175,
+      "rows_per_second": 1735886.5823291503,
+      "mib_per_second": 34.07090623245218,
+      "peak_rss_kib": 2472
+    },
+    {
+      "pattern": "all",
+      "rows": 10000,
+      "deposits": 1988,
+      "chargebacks": 1024,
+      "input_bytes": 203186,
+      "input_sha256": "eb446c0deb7d2bdfa583a74c1fb313ddce1d4431cf0f7f959b3e5404825c6bf3",
+      "expected_output_sha256": "8ca793276fb0c46346590a4e17f4b63daa2e89bf3ac0338f0306a6b33e283128",
+      "samples": [
+        {
+          "seconds": 0.004572732024826109,
+          "peak_rss_kib": 2536,
+          "resource_peak_rss_kib": 25252
+        }
+      ],
+      "median_seconds": 0.004572732024826109,
+      "rows_per_second": 2186876.4549744804,
+      "mib_per_second": 42.37582010082672,
+      "peak_rss_kib": 2536
+    }
+  ],
+  "end_utc": "2026-10-18T12:28:24.738926+00:00"
+}
